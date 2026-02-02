@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: assistente-ranny
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: assistente-ranny
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    healthCheckPath: /health
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROUP_ID
+        value: -1003536252896
+      - key: TOPIC_CHAT
+        value: 47
+      - key: TOPIC_FINANCEIRO
+        value: 2
+      - key: TOPIC_EMPRESA
+        value: 3
+      - key: TOPIC_JURIDICO
+        value: 5
+      - key: TOPIC_PESSOAL
+        value: 4
+      - key: TOPIC_FUNCIONARIOS
+        value: 6
+      - key: TOPIC_MANUTENCAO
+        value: 7
+      - key: TOPIC_OUTROS
+        value: 8
+      - key: TOPIC_OPERACIONAL
+        value: 214
+      - key: TOPIC_MIDIA
+        value: 215
+      - key: TOPIC_CONTROLES
+        value: 216
+      - key: PYTHON_VERSION
+        value: 3.10.0

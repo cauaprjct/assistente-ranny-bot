@@ -1,0 +1,4 @@
+# Procfile para Render
+# Web: Roda o bot Telegram + servidor web FastAPI
+
+web: python bot.py
