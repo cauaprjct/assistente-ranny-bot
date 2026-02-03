@@ -1286,7 +1286,7 @@ async def main():
         day_of_week='sun'
     )
     
-    # Job de keep-alive (a cada 10 minutos para evitar sleep no Railway)
+    # Job de keep-alive (a cada 10 minutos para evitar sleep no Render/Railway)
     add_interval_job(
         jobs.keep_alive,
         job_id='keep_alive',

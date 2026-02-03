@@ -291,13 +291,15 @@ async def resumo_semanal() -> bool:
 
 
 async def keep_alive() -> bool:
-    """Job de keep-alive - mantém o bot acordado no Railway
+    """Job de keep-alive - mantém o bot acordado no Render/Railway
     
     Faz uma requisição HTTP ao próprio health check a cada 10 minutos
-    para evitar que o Railway coloque o serviço em sleep por inatividade.
+    para evitar que a plataforma coloque o serviço em sleep por inatividade.
     
-    Isso é especialmente útil no plano gratuito do Railway que tem
-    limite de horas de execução por mês.
+    Isso é especialmente útil nos planos gratuitos do Render e Railway
+    que colocam serviços inativos em sleep após 15 minutos.
+    
+    Requirements: 9.2, 9.3
     
     Returns:
         True se a requisição foi bem-sucedida

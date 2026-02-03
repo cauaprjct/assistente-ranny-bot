@@ -7,37 +7,48 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============ AMBIENTE ============
-# Railway define automaticamente estas variáveis
+# Detecta plataforma de deploy automaticamente
 RAILWAY_ENVIRONMENT = os.getenv('RAILWAY_ENVIRONMENT', 'development')
 RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN', '')
-IS_PRODUCTION = RAILWAY_ENVIRONMENT == 'production'
+RENDER_EXTERNAL_URL = os.getenv('RENDER_EXTERNAL_URL', '')  # Render define automaticamente
+
+# Detecta se está em produção (Railway ou Render)
+IS_PRODUCTION = (
+    RAILWAY_ENVIRONMENT == 'production' or 
+    bool(RENDER_EXTERNAL_URL)
+)
 
 # ============ SERVIDOR WEB ============
 # Railway define PORT automaticamente
 PORT = int(os.getenv('PORT', '8000'))
 
-# URL base para links de relatórios
-# Prioridade: BASE_URL > RAILWAY_PUBLIC_DOMAIN > localhost
+# URL base para links de relatórios e keep-alive
+# Prioridade: BASE_URL > RENDER_EXTERNAL_URL > RAILWAY_PUBLIC_DOMAIN > localhost
 def get_base_url():
     """
-    Retorna a URL base para links externos (relatórios, OAuth callback).
+    Retorna a URL base para links externos (relatórios, OAuth callback, keep-alive).
     
     Prioridade de configuração:
     1. BASE_URL - variável de ambiente explícita (para domínio customizado)
-    2. RAILWAY_PUBLIC_DOMAIN - definido automaticamente pelo Railway
-    3. localhost:PORT - fallback para desenvolvimento local
+    2. RENDER_EXTERNAL_URL - definido automaticamente pelo Render
+    3. RAILWAY_PUBLIC_DOMAIN - definido automaticamente pelo Railway
+    4. localhost:PORT - fallback para desenvolvimento local
     
-    Para configurar domínio customizado no Railway:
-    1. Vá em Settings > Domains no painel do Railway
-    2. Adicione seu domínio (ex: ranny.seudominio.com)
-    3. Configure DNS CNAME apontando para Railway
-    4. Defina BASE_URL=https://ranny.seudominio.com nas variáveis
+    O Render define RENDER_EXTERNAL_URL automaticamente (ex: https://meuapp.onrender.com)
+    O Railway define RAILWAY_PUBLIC_DOMAIN automaticamente (ex: meuapp.railway.app)
     
-    Requirements: 5.2
+    Para configurar domínio customizado:
+    - Render: Settings > Custom Domain
+    - Railway: Settings > Domains
+    - Ou defina BASE_URL=https://seudominio.com nas variáveis de ambiente
+    
+    Requirements: 5.2, 9.2
     """
     base = os.getenv('BASE_URL', '')
     if base:
         return base.rstrip('/')
+    if RENDER_EXTERNAL_URL:
+        return RENDER_EXTERNAL_URL.rstrip('/')
     if RAILWAY_PUBLIC_DOMAIN:
         return f"https://{RAILWAY_PUBLIC_DOMAIN}"
     return f"http://localhost:{PORT}"
