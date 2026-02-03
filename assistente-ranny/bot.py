@@ -81,7 +81,6 @@ Estou aqui para te ajudar com:
 📝 Lembretes inteligentes
 🔍 Busca de arquivos
 📄 Criar/editar PDF, Word e Excel
-☁️ Integração com OneDrive
 
 É só conversar comigo naturalmente! 😊
 
@@ -132,11 +131,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Envie .docx + "adiciona: [texto]"
 • Envie .xlsx + "adiciona linha: [dados]"
 • Envie arquivo + "substitui X por Y"
-
-**☁️ OneDrive:**
-• "conecta onedrive"
-• "busca X no onedrive"
-• "status onedrive"
 
 É só conversar naturalmente! 💬"""
     
@@ -318,10 +312,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ===== CRIAÇÃO DE ARQUIVOS =====
         if await handle_criar_arquivo(update, context, text):
-            return
-        
-        # ===== ONEDRIVE =====
-        if await handle_onedrive(update, context, text):
             return
         
         # ===== CONVERSA COM IA =====
@@ -1148,16 +1138,7 @@ async def handle_editar_arquivo(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"❌ Erro ao editar: {str(e)}")
 
 
-async def handle_onedrive(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
-    """Integração OneDrive (placeholder - módulo onedrive.py existe mas não está completo)"""
-    
-    text_lower = text.lower()
-    
-    if 'onedrive' in text_lower or 'notebook' in text_lower:
-        await update.message.reply_text("☁️ Integração OneDrive em desenvolvimento! Em breve você poderá buscar arquivos na nuvem.")
-        return True
-    
-    return False
+# Função handle_onedrive removida - usar monitor local em vez de integração Azure OneDrive
 
 
 # ============ UTILIDADES ============

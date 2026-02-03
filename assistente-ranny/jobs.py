@@ -320,3 +320,6 @@ async def keep_alive() -> bool:
     except Exception as e:
         logger.error(f"❌ Erro no keep-alive: {e}")
         return False
+
+
+# Job sync_onedrive removido - usar monitor local em vez de integração Azure OneDrive
