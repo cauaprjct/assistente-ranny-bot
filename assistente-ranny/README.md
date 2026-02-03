@@ -39,7 +39,7 @@
 | **Alertas de vencimento** | Automático | Alerta 7, 3 e 1 dia antes do vencimento |
 | **Marcar como pago** | "paguei a luz" | Marca vencimento como pago, cria próximo se recorrente |
 | **Buscar documentos** | "cadê o contrato?" | Busca por descrição, tipo ou categoria |
-| **Reenviar documento** | "manda o 1" | Reenvia documento encontrado na busca |
+| **Localizar documento** | "manda o 1" | Mostra em qual tópico o documento está |
 | **Relatórios interativos** | "mostra gráfico da semana" | Gera página web com gráficos Plotly |
 | **Resumo semanal** | Automático (domingo 20h) | Envia relatório semanal no Chat |
 | **OneDrive** | "busca X no onedrive" | Busca arquivos na nuvem (não precisa PC ligado) |
@@ -201,8 +201,10 @@ Padrões suportados:
 - `"acha o documento"` / `"procura o comprovante"`
 - `"tem algum documento de..."` / `"você tem o contrato?"`
 
-Após a busca, pode reenviar:
-- `"manda o 1"` → reenvia o primeiro documento encontrado
+Após a busca, pode localizar:
+- `"manda o 1"` → mostra em qual tópico está o primeiro documento encontrado
+
+**⚠️ Nota:** O bot mostra onde o documento está (qual tópico), mas não reenvia automaticamente. Você precisa ir no tópico indicado para pegar o arquivo.
 
 ### ☁️ Integração OneDrive
 
@@ -336,6 +338,13 @@ O bot pode criar e editar documentos diretamente no Telegram:
        🔗 Ver mensagem
     
     💡 Quer que eu te mande algum? Diz o número (ex: 'manda o 1')"
+
+👤 "manda o 1"
+🤖 "📁 Contrato de locação comercial
+    📂 Categoria: Juridico
+    📅 Salvo em: 2025-01-10
+    
+    💡 Você pode encontrar este arquivo no tópico Juridico do grupo!"
 ```
 
 ### Marcar Pagamento

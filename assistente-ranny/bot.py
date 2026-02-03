@@ -117,7 +117,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 **🔍 Busca:**
 • "cadê o contrato?"
 • "procura nota fiscal"
-• "manda o 1" → reenvia resultado
+• "manda o 1" → mostra onde está o resultado
 
 **📄 Criar Arquivos:**
 • "cria um pdf com: [texto]"
@@ -188,8 +188,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             descricao=dados.get('descricao', file_name),
             file_id=document.file_id,
             categoria=categoria,
-            message_id=message.message_id,
-            topic_id=message.message_thread_id,
             dados_extraidos=dados
         )
         
@@ -250,8 +248,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             descricao=dados.get('descricao', 'Imagem'),
             file_id=photo.file_id,
             categoria=categoria,
-            message_id=message.message_id,
-            topic_id=message.message_thread_id,
             dados_extraidos=dados
         )
         
@@ -832,21 +828,19 @@ async def handle_reenvio_documento(update: Update, context: ContextTypes.DEFAULT
         doc = documentos[numero - 1]
         
         try:
-            # Reenvia o documento
-            if doc.get('file_id'):
-                await context.bot.copy_message(
-                    chat_id=update.effective_chat.id,
-                    from_chat_id=config.GROUP_ID,
-                    message_id=doc['message_id']
-                )
-            else:
-                await update.message.reply_text(f"❌ Documento não disponível para reenvio")
+            # Informa onde o documento está
+            categoria = doc.get('categoria', 'outros')
+            resposta = f"📁 **{doc.get('descricao')}**\n\n"
+            resposta += f"📂 Categoria: {categoria.title()}\n"
+            resposta += f"📅 Salvo em: {doc.get('created_at', 'N/A')}\n\n"
+            resposta += f"💡 Você pode encontrar este arquivo no tópico **{categoria.title()}** do grupo!"
             
+            await update.message.reply_text(resposta, parse_mode=ParseMode.MARKDOWN)
             return True
             
         except Exception as e:
-            logger.error(f"Erro ao reenviar documento: {e}")
-            await update.message.reply_text(f"❌ Erro ao reenviar: {str(e)}")
+            logger.error(f"Erro ao mostrar documento: {e}")
+            await update.message.reply_text(f"❌ Erro: {str(e)}")
             return True
     
     return False

@@ -236,14 +236,33 @@ def adicionar_documento(nome_arquivo: str, tipo_documento: Optional[str] = None,
                         file_path: Optional[str] = None, resumo: Optional[str] = None,
                         tags: Optional[List[str]] = None, message_id: Optional[int] = None,
                         topic_id: Optional[int] = None) -> bool:
+    """
+    Adiciona documento ao banco.
+    message_id e topic_id são opcionais e mantidos apenas para compatibilidade.
+    """
     try:
         conn = get_connection()
         cursor = conn.cursor()
         tags_str = json.dumps(tags) if tags else None
-        cursor.execute('''
-            INSERT INTO documentos (nome_arquivo, tipo_documento, categoria, file_id, file_path, resumo, tags, message_id, topic_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (nome_arquivo, tipo_documento, categoria, file_id, file_path, resumo, tags_str, message_id, topic_id))
+        
+        # Verifica se as colunas message_id e topic_id existem na tabela
+        cursor.execute("PRAGMA table_info(documentos)")
+        columns = [col[1] for col in cursor.fetchall()]
+        has_message_id = 'message_id' in columns
+        has_topic_id = 'topic_id' in columns
+        
+        # Monta query dinamicamente baseado nas colunas disponíveis
+        if has_message_id and has_topic_id:
+            cursor.execute('''
+                INSERT INTO documentos (nome_arquivo, tipo_documento, categoria, file_id, file_path, resumo, tags, message_id, topic_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (nome_arquivo, tipo_documento, categoria, file_id, file_path, resumo, tags_str, message_id, topic_id))
+        else:
+            cursor.execute('''
+                INSERT INTO documentos (nome_arquivo, tipo_documento, categoria, file_id, file_path, resumo, tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (nome_arquivo, tipo_documento, categoria, file_id, file_path, resumo, tags_str))
+        
         conn.commit()
         doc_id = cursor.lastrowid
         conn.close()

@@ -1,0 +1,101 @@
+ 19/11/2025 16:18 - As mensagens e ligações são protegidas com a criptografia de ponta a ponta. Somente as pessoas que fazem parte da conversa podem ler, ouvir e compartilhar esse conteúdo. Saiba mais
+19/11/2025 16:18 - ‎Ranny M. Morett está na sua lista de contatos
+19/11/2025 16:18 - Ranny M. Morett: Ola
+19/11/2025 16:18 - Ranny M. Morett: <Mídia oculta>
+19/11/2025 16:18 - Ranny M. Morett: O que eu faço aqui?
+19/11/2025 16:18 - Cauã: Aperta o botão f1
+19/11/2025 16:18 - Cauã: <Mídia oculta>
+19/11/2025 16:18 - Cauã: <Mídia oculta>
+19/11/2025 16:19 - Ranny M. Morett: <Mídia oculta>
+19/11/2025 16:20 - Ranny M. Morett: Show
+19/11/2025 16:20 - Ranny M. Morett: Ligou
+19/11/2025 16:23 - Cauã: Deu certo?
+19/11/2025 16:23 - Ranny M. Morett: Deu sim!
+19/11/2025 16:23 - Ranny M. Morett: Obrigada 🙏🏼
+19/11/2025 16:24 - Cauã: <Mídia oculta>
+19/11/2025 16:24 - Ranny M. Morett: <Mídia oculta>
+19/11/2025 16:24 - Ranny M. Morett: <Mídia oculta>
+19/11/2025 16:24 - Ranny M. Morett: <Mídia oculta>
+19/11/2025 16:37 - Cauã: pelo que vc descreveu (desliga na queda de luz, pisca um tempão e só volta depois de um dia), acho que é a bateria interna que tá fraca ou estragada. Isso é comum em nobreaks depois de uns 3-5 anos de uso, pq as baterias perdem a capacidade de segurar carga com o tempo, calor ou muitas quedas de energia. O piscar é um aviso de falha, e demora pra estabilizar pq tá tentando recarregar algo que não aguenta mais. Não é defeito grave do modelo, mas sinal de que precisa manutenção ou troca.
+19/11/2025 16:38 - Cauã: Antes de comprar novo, vê se dá pra trocar só a bateria do seu Sideway (procura no site da TS Shara ou leva numa assistência). Mas se for antigo, melhor investir num novo pra evitar mais dor de cabeça. Baterias ruins podem até danificar seus equipamentos se falharem no meio de uma queda de luz.
+19/11/2025 16:39 - Cauã: O Intelbras ATTIV 600VA (baratinho, uns R$300-400, bom pra PC básico) ou o 1500VA se vc quiser mais potência (R$500-700). Outra opção é o TS Shara UPS Compact 1200VA (da mesma marca, mas melhor, R$400-600). Ou o APC Back-UPS 1500VA pra algo top (R$600-800). Todos têm bateria boa e protegem bem contra quedas. Dá uma olhada na Amazon ou Mercado Livre, e verifica a potência pro que vc usa!
+19/11/2025 19:19 - Ranny M. Morett: https://a.co/d/78gGR45
+19/11/2025 19:20 - Ranny M. Morett: https://a.co/d/ib09qUg
+19/11/2025 19:22 - Ranny M. Morett: https://a.co/d/457AYgK
+19/11/2025 19:22 - Ranny M. Morett: Esse é bivolt
+19/11/2025 19:28 - Ranny M. Morett: é melhor ser bivolt?
+19/11/2025 19:36 - Cauã: O terceiro (o Intelbras XNB 720) parece bom, com 720VA, 6 tomadas e autonomia decente pra um PC (uns 25-60 min dependendo do que tá ligado). E sim, é melhor ser bivolt! Ele adapta sozinho pra 110V ou 220V, o que evita problemas se a voltagem da sua casa mudar ou se vc se mudar. Os monovolt podem queimar fácil se errar a voltagem. Os outros dois links não abriram direito aqui, mas se não forem bivolt, melhor evitar.
+19/11/2025 19:37 - Cauã: no Brasil, é essencial pq a rede elétrica varia por região (RJ é mais 110V, mas SP tem 220V em alguns lugares). Com bivolt, vc pluga em qq tomada sem medo, e ele estabiliza tudo. Seu Sideway antigo provavelmente não aguentava variações bem, por isso tava falhando. Esse Intelbras é bivolt e tem boa reputação, mas confere se a potência serve pro que vc usa (ex: PC + monitor precisa de pelo menos 600VA).
+19/11/2025 19:37 - Cauã: é da mesma marca que eu te recomendei antes, linha básica mas confiável. Preço tá ok (uns R$460). Se quiser algo mais potente, olha o ATTIV 1500VA da Intelbras (R$500-700) ou o TS Shara 1200VA (R$400-600), todos bivolt. Antes de comprar, calcula a potência total dos seus aparelhos (no Google tem calculadora de VA pra nobreak). Qualquer dúvida nos links, me manda print!
+19/11/2025 19:41 - Ranny M. Morett: Vixi, agora não sei como fazer isso
+19/11/2025 19:42 - Ranny M. Morett: Não sei a potência do que tá lá
+19/11/2025 19:44 - Ranny M. Morett: Computador(monitor)
+Roteador internet 
+CPU
+19/11/2025 19:45 - Cauã: Calcular a potência pro nobreak é fácil, é só pra garantir que o novo não fique sobrecarregado como o Sideway. Basicamente, vc soma o consumo dos aparelhos que liga nele (em Watts), converte pra VA e adiciona uma folga. Me diz o que vc conecta lá? Tipo PC, monitor, roteador? Aí eu ajudo a estimar.
+19/11/2025 19:45 - Cauã: Passo a passo pra calcular:
+Lista os aparelhos (ex: PC torre, monitor).
+Olha na etiqueta de cada um o consumo em Watts (geralmente atrás ou no manual – ex: PC 300W, monitor 30W).
+Soma tudo (ex: 300 + 30 = 330W).
+Divide por 0.6 pra converter em VA (ex: 330 / 0.6 = 550VA).
+Adiciona 20-30% de margem (ex: 550 x 1.2 = 660VA). Escolhe um nobreak de pelo menos 700VA.
+Se não achar os Watts exatos, usa médias: PC básico 200-400W, monitor 20-50W. Me manda os valores que vc encontrar!
+19/11/2025 19:55 - Ranny M. Morett: 
+19/11/2025 19:55 - Ranny M. Morett: <Mídia oculta>
+19/11/2025 19:55 - Ranny M. Morett: <Mídia oculta>
+19/11/2025 19:55 - Ranny M. Morett: Só não achei do CPU
+19/11/2025 20:02 - Cauã: vc achou do monitor e do modem. Do monitor HP (HSTND-3251-L): consome uns 30W no uso normal (a etiqueta mostra 0.8A max, mas na prática é bem menos). Do modem Humax (HG100R-02): uns 5W (12V 0.5A). Só faltou o CPU, mas tudo bem, a gente estima!
+19/11/2025 20:03 - Cauã: Somando tudo: Monitor 30W + Modem 5W + PC 250W = 285W totais. Pra VA do nobreak: divide por 0.6 (fator pros computadores) = ~475VA. Com folga de 20%: ~570VA. O Intelbras XNB 720VA que vc mandou cobre isso fácil (tem uns 360-430W reais). Se adicionar mais coisas (tipo impressora), soma também. Tá bom pra comprar
+19/11/2025 20:09 - Ranny M. Morett: Vou investir nesse da Intel então
+19/11/2025 20:09 - Ranny M. Morett: E tá pra chegar até sexta
+19/11/2025 20:10 - Ranny M. Morett: Nem sei como agradecer tanta atenção
+19/11/2025 20:16 - Cauã: ta tranquilo
+19/11/2025 20:17 - Cauã: quando precisar me chama
+25/11/2025 18:48 - Ranny M. Morett: Oii
+25/11/2025 18:48 - Ranny M. Morett: Eu te perturbando de novo <Mensagem editada>
+25/11/2025 18:55 - Cauã: Sksk pode falar
+25/11/2025 19:00 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:00 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:02 - Cauã: Tentou desligar ligar?
+25/11/2025 19:02 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:03 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:03 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:04 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:04 - Cauã: Muito incomum
+25/11/2025 19:05 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:06 - Cauã: Já tentou ligar o Pc sem o teclado? Se parar de mexer sozinho depois de ter retirado o teclado então pode ser que alguém molhou o teclado
+25/11/2025 19:07 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:08 - Cauã: Ok
+25/11/2025 19:10 - Ranny M. Morett: <Mídia oculta>
+25/11/2025 19:30 - Cauã: Apartir daí não dá pra tu fazer mais nada
+25/11/2025 19:30 - Cauã: Eu teria que ir ai
+25/11/2025 19:35 - Ranny M. Morett: Se tiver disponibilidade pode vir
+25/11/2025 20:28 - Cauã: Tô indo, dependendo da situação vou levar o gabinete pra cá.
+25/11/2025 20:29 - Cauã: Em certas situações só dá pra concertar o Pc através de outro pc
+25/11/2025 20:29 - Cauã: Pc antigo é chatinho de mexer
+25/11/2025 23:18 - Cauã: Ainda tá aberto?
+25/11/2025 23:18 - Ranny M. Morett: sim]
+26/11/2025 00:54 - Ranny M. Morett: <Mídia oculta>
+26/11/2025 00:54 - Ranny M. Morett: Desligou sozinho e voltou nessa tela
+26/11/2025 00:54 - Ranny M. Morett: Seleciona o 10?
+26/11/2025 06:43 - Cauã: Sim
+09/01/2026 21:27 - Ranny M. Morett: Oii
+09/01/2026 21:27 - Ranny M. Morett: Boa noite
+09/01/2026 21:27 - Ranny M. Morett: <Mídia oculta>
+09/01/2026 21:27 - Ranny M. Morett: O que preciso fazer ?
+09/01/2026 21:28 - Ranny M. Morett: Primeira vez que da isso no notebook
+09/01/2026 21:31 - Cauã: Boa noite
+09/01/2026 21:32 - Cauã: Desliga o Pc completamente
+09/01/2026 21:32 - Cauã: Espera 1 minuto e liga de novo
+09/01/2026 21:32 - Ranny M. Morett: Ta
+09/01/2026 21:32 - Cauã: Mensagem indica que o HD ou ssd foi removido
+09/01/2026 21:32 - Cauã: Então pode ser erro de inicialização ou alguém esbarrou no cabo que conecta o HD ou ssd na placa mae
+09/01/2026 21:33 - Cauã: O que é possível já que o gabinete não tá fechado né?
+12/01/2026 16:34 - Ranny M. Morett: Oi boa tarde
+12/01/2026 16:34 - Ranny M. Morett: Eu de novo
+12/01/2026 16:35 - Ranny M. Morett: Eu tirei o cabo que carrega dele e ele acabou descarregando por completo
+12/01/2026 16:35 - Cauã: pode falar
+12/01/2026 16:35 - Cauã: boa tarde
+12/01/2026 16:35 - Ranny M. Morett: Quando fui ligar, apareceu essa msg
+12/01/2026 16:35 - Ranny M. Morett: Só que na sexta acabei me enrolando e não voltei pra vê
+12/01/2026 16:35 - Ranny M. Morett: Tô ligando ele agora e continua na mesma tela
