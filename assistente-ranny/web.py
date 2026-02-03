@@ -37,11 +37,10 @@ app = FastAPI(
 @app.get("/health")
 async def health_check() -> JSONResponse:
     """
-    Health check endpoint para Railway e monitoramento.
+    Health check endpoint para Render e monitoramento.
     
     Verifica:
     - Status do servidor web
-    - Conexão com Supabase (banco de dados)
     - Status do scheduler
     
     Retorna status detalhado para monitoramento.
@@ -49,18 +48,6 @@ async def health_check() -> JSONResponse:
     Requirements: 9.2, 9.3
     """
     import scheduler as sched
-    from database import check_connection
-    
-    # Verifica conexão com banco de dados
-    db_status = "healthy"
-    db_error = None
-    try:
-        if not check_connection():
-            db_status = "unhealthy"
-            db_error = "Connection test failed"
-    except Exception as e:
-        db_status = "unhealthy"
-        db_error = str(e)
     
     # Verifica status do scheduler
     scheduler_status = "healthy"
@@ -75,22 +62,13 @@ async def health_check() -> JSONResponse:
         scheduler_status = "error"
         logger.warning(f"Erro ao verificar scheduler: {e}")
     
-    # Status geral
-    overall_status = "healthy"
-    if db_status != "healthy":
-        overall_status = "degraded"
-    
     response_data = {
-        "status": overall_status,
+        "status": "healthy",
         "service": "assistente-ranny",
         "version": "3.0.0",
         "timestamp": datetime.now().isoformat(),
         "components": {
             "web": "healthy",
-            "database": {
-                "status": db_status,
-                "error": db_error
-            },
             "scheduler": {
                 "status": scheduler_status,
                 "jobs_count": scheduler_jobs
@@ -98,8 +76,7 @@ async def health_check() -> JSONResponse:
         }
     }
     
-    # Retorna 200 mesmo se degradado (Railway precisa de 200 para considerar healthy)
-    # Mas inclui detalhes para monitoramento
+    # Retorna 200 para Render considerar o serviço healthy
     return JSONResponse(
         content=response_data,
         status_code=200
