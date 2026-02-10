@@ -519,9 +519,9 @@ TEXTO DA RANNY:
 
 RETORNE APENAS O JSON (sem ```json, sem explicações):"""
 
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model_entregadores = genai.GenerativeModel('gemini-2.5-flash')
         
-        response = model.generate_content(
+        response = model_entregadores.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.1,
