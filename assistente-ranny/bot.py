@@ -1283,24 +1283,27 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     await update.message.reply_text("❌ Erro ao criar planilha Excel")
                     return True
                 
-                # Cria tópico
+                # Usa tópico fixo ou cria na primeira vez
                 periodo = dados_planilha.get('periodo', 'Semana')
-                nome_topico = f"📊 Entregadores - {periodo}"
+                topico_id = config.TOPICS.get('planilha_entregadores', 0)
                 
-                try:
-                    result = await context.bot.create_forum_topic(
-                        chat_id=config.GROUP_ID,
-                        name=nome_topico[:100]  # Telegram limita a 100 caracteres
-                    )
-                    topico_id = result.message_thread_id
-                    logger.info(f"✅ Tópico criado: {nome_topico} (ID: {topico_id})")
-                except Exception as e:
-                    logger.error(f"❌ Erro ao criar tópico: {e}")
-                    # Se falhar, envia no tópico Chat
-                    topico_id = config.TOPICS['chat']
-                    await update.message.reply_text(f"⚠️ Não consegui criar tópico novo, enviando no Chat")
+                # Se não tem tópico configurado (0), cria um fixo
+                if not topico_id or topico_id == 0:
+                    try:
+                        result = await context.bot.create_forum_topic(
+                            chat_id=config.GROUP_ID,
+                            name="📊 Planilha dos Entregadores"
+                        )
+                        topico_id = result.message_thread_id
+                        logger.info(f"✅ Tópico criado: Planilha dos Entregadores (ID: {topico_id})")
+                        logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES={topico_id}")
+                    except Exception as e:
+                        logger.error(f"❌ Erro ao criar tópico: {e}")
+                        # Se falhar, envia no tópico Chat
+                        topico_id = config.TOPICS['chat']
+                        await update.message.reply_text(f"⚠️ Não consegui criar tópico, enviando no Chat")
                 
-                # Envia planilha no tópico
+                # Envia planilha no tópico fixo
                 nome_arquivo = f"entregadores_{periodo.replace('/', '_').replace(' ', '_')}.xlsx"
                 
                 await context.bot.send_document(
@@ -1308,12 +1311,13 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     message_thread_id=topico_id,
                     document=io.BytesIO(xlsx_bytes),
                     filename=nome_arquivo,
-                    caption=f"📊 *Planilha de Entregadores*\n\n{periodo}\n\n✅ Planilha criada automaticamente pelo bot!"
+                    caption=f"📊 *Planilha de Entregadores*\n\n{periodo}\n\n✅ Planilha criada automaticamente pelo bot!",
+                    parse_mode=ParseMode.MARKDOWN
                 )
                 
                 await update.message.reply_text(
                     f"✅ *Planilha criada com sucesso!*\n\n"
-                    f"📁 Tópico: {nome_topico}\n"
+                    f"📁 Tópico: Planilha dos Entregadores\n"
                     f"📊 Arquivo: {nome_arquivo}\n\n"
                     f"A planilha já está com todas as fórmulas calculadas! 🎉",
                     parse_mode=ParseMode.MARKDOWN
