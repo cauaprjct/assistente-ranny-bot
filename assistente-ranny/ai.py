@@ -496,6 +496,8 @@ IMPORTANTE:
 - "chegaram_horario" deve ser 0 (zero) para segunda a quinta
 - "chegaram_horario" só tem valor para sexta, sábado e domingo
 - Se não mencionar quem chegou no horário, assume 0
+- Para "periodo": tente identificar datas no texto (ex: "semana do dia 3", "semana passada")
+- Se não houver datas mencionadas, use "Semana DD/MM a DD/MM" (será calculado automaticamente)
 
 TAREFA:
 Extraia os dados do texto abaixo e retorne APENAS um JSON válido (sem markdown, sem explicações).
@@ -557,11 +559,17 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
                     "erro": f"Dia {dia.get('dia', '?')} com dados incompletos"
                 }
         
-        # Gera período se não tiver
-        if 'periodo' not in dados or not dados['periodo']:
-            from datetime import datetime
+        # Gera período se não tiver ou se for placeholder
+        if 'periodo' not in dados or not dados['periodo'] or 'DD/MM' in dados.get('periodo', ''):
+            from datetime import datetime, timedelta
             hoje = datetime.now()
-            dados['periodo'] = f"Semana {hoje.strftime('%d/%m/%Y')}"
+            
+            # Calcula segunda-feira da semana ANTERIOR (semana que acabou)
+            dias_desde_segunda = hoje.weekday()  # 0=segunda, 6=domingo
+            segunda_anterior = hoje - timedelta(days=dias_desde_segunda + 7)
+            domingo_anterior = segunda_anterior + timedelta(days=6)
+            
+            dados['periodo'] = f"Semana {segunda_anterior.strftime('%d/%m')} a {domingo_anterior.strftime('%d/%m')}"
         
         logger.info(f"Dados de entregadores extraídos: {len(dados['dias'])} dias")
         
