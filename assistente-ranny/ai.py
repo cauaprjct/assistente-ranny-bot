@@ -2,6 +2,7 @@
 Integração com Gemini AI
 """
 import google.generativeai as genai
+import json
 from datetime import datetime
 from config import GEMINI_API_KEY, SYSTEM_PROMPT
 import database_adapter as db
@@ -456,3 +457,130 @@ Responda apenas com a categoria, sem explicação."""
     except Exception as e:
         logger.error(f"Erro ao classificar: {e}")
         return 'outros'
+
+
+
+async def extrair_dados_entregadores(texto: str) -> dict:
+    """Extrai dados de entregadores do texto usando IA
+    
+    Args:
+        texto: Descrição da semana de entregas
+    
+    Returns:
+        Dicionário com estrutura:
+        {
+            "sucesso": True/False,
+            "dados": {
+                "periodo": "Semana 10/02 a 16/02",
+                "dias": [
+                    {"dia": "segunda", "entregadores": 3, "chegaram_horario": 0, "entregas": 20},
+                    ...
+                ]
+            },
+            "erro": "mensagem de erro" (se falhar)
+        }
+    """
+    try:
+        prompt = f"""Você é um assistente que extrai dados estruturados de texto.
+
+CONTEXTO:
+A Ranny descreve a semana de trabalho dos entregadores da pizzaria.
+
+REGRAS DE NEGÓCIO:
+- Segunda a quinta: R$ 1,00 por entregador escalado
+- Sexta a domingo: R$ 10,00 por entregador escalado
+- Sexta a domingo: R$ 10,00 adicional por cada entregador que chegar até 18:10h
+- Sempre: R$ 12,00 por entrega realizada
+
+IMPORTANTE:
+- "chegaram_horario" deve ser 0 (zero) para segunda a quinta
+- "chegaram_horario" só tem valor para sexta, sábado e domingo
+- Se não mencionar quem chegou no horário, assume 0
+
+TAREFA:
+Extraia os dados do texto abaixo e retorne APENAS um JSON válido (sem markdown, sem explicações).
+
+FORMATO DO JSON:
+{{
+  "periodo": "Semana DD/MM a DD/MM",
+  "dias": [
+    {{"dia": "segunda", "entregadores": 3, "chegaram_horario": 0, "entregas": 20}},
+    {{"dia": "terca", "entregadores": 3, "chegaram_horario": 0, "entregas": 18}},
+    {{"dia": "quarta", "entregadores": 3, "chegaram_horario": 0, "entregas": 22}},
+    {{"dia": "quinta", "entregadores": 3, "chegaram_horario": 0, "entregas": 19}},
+    {{"dia": "sexta", "entregadores": 4, "chegaram_horario": 3, "entregas": 30}},
+    {{"dia": "sabado", "entregadores": 4, "chegaram_horario": 4, "entregas": 35}},
+    {{"dia": "domingo", "entregadores": 4, "chegaram_horario": 3, "entregas": 28}}
+  ]
+}}
+
+TEXTO DA RANNY:
+{texto}
+
+RETORNE APENAS O JSON (sem ```json, sem explicações):"""
+
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=2000,
+            )
+        )
+        
+        if not response or not response.text:
+            return {
+                "sucesso": False,
+                "erro": "IA não retornou resposta"
+            }
+        
+        # Limpa a resposta (remove markdown se houver)
+        resposta_texto = response.text.strip()
+        resposta_texto = resposta_texto.replace('```json', '').replace('```', '').strip()
+        
+        # Parse JSON
+        import json
+        dados = json.loads(resposta_texto)
+        
+        # Valida estrutura básica
+        if 'dias' not in dados or not isinstance(dados['dias'], list):
+            return {
+                "sucesso": False,
+                "erro": "Estrutura JSON inválida"
+            }
+        
+        # Valida cada dia
+        for dia in dados['dias']:
+            if not all(k in dia for k in ['dia', 'entregadores', 'chegaram_horario', 'entregas']):
+                return {
+                    "sucesso": False,
+                    "erro": f"Dia {dia.get('dia', '?')} com dados incompletos"
+                }
+        
+        # Gera período se não tiver
+        if 'periodo' not in dados or not dados['periodo']:
+            from datetime import datetime
+            hoje = datetime.now()
+            dados['periodo'] = f"Semana {hoje.strftime('%d/%m/%Y')}"
+        
+        logger.info(f"Dados de entregadores extraídos: {len(dados['dias'])} dias")
+        
+        return {
+            "sucesso": True,
+            "dados": dados
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao fazer parse do JSON: {e}")
+        logger.error(f"Resposta da IA: {resposta_texto if 'resposta_texto' in locals() else 'N/A'}")
+        return {
+            "sucesso": False,
+            "erro": f"Erro ao interpretar resposta da IA: {str(e)}"
+        }
+    except Exception as e:
+        logger.error(f"Erro ao extrair dados de entregadores: {e}")
+        return {
+            "sucesso": False,
+            "erro": str(e)
+        }

@@ -1432,3 +1432,266 @@ def editar_xlsx_atualizar_celula(xlsx_bytes: bytes, linha: int, coluna: int, val
     except Exception as e:
         logger.error(f"Erro ao editar XLSX (atualizar célula): {e}")
         return None
+
+
+def criar_xlsx_entregadores(dados: dict, custo_semana: float = 1.0, custo_fds: float = 10.0, 
+                           bonus_horario: float = 10.0, custo_entrega: float = 12.0) -> Optional[bytes]:
+    """Cria planilha Excel formatada para controle de entregadores
+    
+    Args:
+        dados: Dicionário com estrutura:
+            {
+                "periodo": "Semana 10/02 a 16/02",
+                "dias": [
+                    {"dia": "segunda", "entregadores": 3, "chegaram_horario": 0, "entregas": 20},
+                    ...
+                ]
+            }
+        custo_semana: Custo por entregador seg-qui (padrão: 1.0)
+        custo_fds: Custo por entregador sex-dom (padrão: 10.0)
+        bonus_horario: Bônus por chegar até 18:10 no FDS (padrão: 10.0)
+        custo_entrega: Custo por entrega (padrão: 12.0)
+    
+    Returns:
+        bytes do XLSX ou None se falhar
+    """
+    if not HAS_XLSX:
+        logger.error("openpyxl não instalado")
+        return None
+    
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Entregadores"
+        
+        # Estilos
+        title_font = Font(bold=True, size=14, color="FFFFFF")
+        title_fill = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
+        title_align = Alignment(horizontal="center", vertical="center")
+        
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="3498DB", end_color="3498DB", fill_type="solid")
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        data_align = Alignment(horizontal="center", vertical="center")
+        currency_align = Alignment(horizontal="right", vertical="center")
+        
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        thick_border = Border(
+            left=Side(style='medium'),
+            right=Side(style='medium'),
+            top=Side(style='medium'),
+            bottom=Side(style='medium')
+        )
+        
+        # Linha 1: Título
+        ws.merge_cells('A1:H1')
+        title_cell = ws['A1']
+        title_cell.value = f"📊 CONTROLE DE ENTREGADORES - {dados.get('periodo', 'Semana')}"
+        title_cell.font = title_font
+        title_cell.fill = title_fill
+        title_cell.alignment = title_align
+        title_cell.border = thick_border
+        ws.row_dimensions[1].height = 30
+        
+        # Linha 2: Vazia (espaçamento)
+        ws.row_dimensions[2].height = 5
+        
+        # Linha 3: Cabeçalhos
+        headers = [
+            "Dia",
+            "Entregadores",
+            "Chegaram\n18:10",
+            "Entregas",
+            "Custo\nEntregadores",
+            "Bônus\nHorário",
+            "Custo\nEntregas",
+            "TOTAL"
+        ]
+        
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+        
+        ws.row_dimensions[3].height = 35
+        
+        # Dados dos dias
+        dias_data = dados.get('dias', [])
+        row_num = 4
+        
+        # Mapeamento de dias para identificar fim de semana
+        dias_fds = {'sexta', 'sabado', 'sábado', 'domingo'}
+        
+        alt_fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+        fds_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+        
+        for idx, dia_info in enumerate(dias_data):
+            dia = dia_info.get('dia', '').lower()
+            entregadores = dia_info.get('entregadores', 0)
+            chegaram_horario = dia_info.get('chegaram_horario', 0)
+            entregas = dia_info.get('entregas', 0)
+            
+            # Determina se é fim de semana
+            is_fds = any(d in dia for d in dias_fds)
+            
+            # Coluna A: Dia
+            cell = ws.cell(row=row_num, column=1, value=dia.capitalize())
+            cell.alignment = data_align
+            cell.border = thin_border
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Coluna B: Entregadores
+            cell = ws.cell(row=row_num, column=2, value=entregadores)
+            cell.alignment = data_align
+            cell.border = thin_border
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Coluna C: Chegaram 18:10
+            cell = ws.cell(row=row_num, column=3, value=chegaram_horario if is_fds else '-')
+            cell.alignment = data_align
+            cell.border = thin_border
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Coluna D: Entregas
+            cell = ws.cell(row=row_num, column=4, value=entregas)
+            cell.alignment = data_align
+            cell.border = thin_border
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Coluna E: Custo Entregadores (fórmula)
+            if is_fds:
+                formula = f"=B{row_num}*{custo_fds}"
+            else:
+                formula = f"=B{row_num}*{custo_semana}"
+            
+            cell = ws.cell(row=row_num, column=5, value=formula)
+            cell.number_format = 'R$ #,##0.00'
+            cell.alignment = currency_align
+            cell.border = thin_border
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Coluna F: Bônus Horário (fórmula)
+            if is_fds:
+                formula = f"=C{row_num}*{bonus_horario}"
+            else:
+                formula = "=0"
+            
+            cell = ws.cell(row=row_num, column=6, value=formula)
+            cell.number_format = 'R$ #,##0.00'
+            cell.alignment = currency_align
+            cell.border = thin_border
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Coluna G: Custo Entregas (fórmula)
+            formula = f"=D{row_num}*{custo_entrega}"
+            cell = ws.cell(row=row_num, column=7, value=formula)
+            cell.number_format = 'R$ #,##0.00'
+            cell.alignment = currency_align
+            cell.border = thin_border
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Coluna H: TOTAL (fórmula)
+            formula = f"=E{row_num}+F{row_num}+G{row_num}"
+            cell = ws.cell(row=row_num, column=8, value=formula)
+            cell.number_format = 'R$ #,##0.00'
+            cell.alignment = currency_align
+            cell.border = thin_border
+            cell.font = Font(bold=True)
+            if is_fds:
+                cell.fill = fds_fill
+            elif idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            row_num += 1
+        
+        # Linha de TOTAL
+        total_row = row_num
+        total_fill = PatternFill(start_color="27AE60", end_color="27AE60", fill_type="solid")
+        total_font = Font(bold=True, color="FFFFFF", size=12)
+        
+        # Coluna A: "TOTAL"
+        cell = ws.cell(row=total_row, column=1, value="TOTAL")
+        cell.font = total_font
+        cell.fill = total_fill
+        cell.alignment = data_align
+        cell.border = thick_border
+        
+        # Colunas B, C, D: Somas
+        for col in [2, 3, 4]:
+            formula = f"=SUM({get_column_letter(col)}4:{get_column_letter(col)}{total_row-1})"
+            cell = ws.cell(row=total_row, column=col, value=formula)
+            cell.font = total_font
+            cell.fill = total_fill
+            cell.alignment = data_align
+            cell.border = thick_border
+        
+        # Colunas E, F, G, H: Somas com formato moeda
+        for col in [5, 6, 7, 8]:
+            formula = f"=SUM({get_column_letter(col)}4:{get_column_letter(col)}{total_row-1})"
+            cell = ws.cell(row=total_row, column=col, value=formula)
+            cell.number_format = 'R$ #,##0.00'
+            cell.font = total_font
+            cell.fill = total_fill
+            cell.alignment = currency_align
+            cell.border = thick_border
+        
+        ws.row_dimensions[total_row].height = 25
+        
+        # Ajusta largura das colunas
+        column_widths = {
+            'A': 12,  # Dia
+            'B': 12,  # Entregadores
+            'C': 12,  # Chegaram 18:10
+            'D': 10,  # Entregas
+            'E': 15,  # Custo Entregadores
+            'F': 15,  # Bônus Horário
+            'G': 15,  # Custo Entregas
+            'H': 18   # TOTAL
+        }
+        
+        for col_letter, width in column_widths.items():
+            ws.column_dimensions[col_letter].width = width
+        
+        # Salva em bytes
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        
+        result = buffer.getvalue()
+        buffer.close()
+        
+        logger.info(f"XLSX de entregadores criado: {len(result)} bytes")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Erro ao criar XLSX de entregadores: {e}")
+        return None

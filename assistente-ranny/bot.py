@@ -49,6 +49,22 @@ for noisy in ['httpx', 'httpcore', 'telegram', 'telegram.ext', 'apscheduler']:
 # Armazena resultados de busca para reenvio com "manda o 1"
 user_search_results = {}
 
+# ============ CONSTANTES DE NEGÓCIO ============
+# Custos de entregadores
+CUSTO_ENTREGADOR_SEMANA = 1.00  # Segunda a quinta
+CUSTO_ENTREGADOR_FDS = 10.00    # Sexta a domingo
+BONUS_HORARIO_FDS = 10.00        # Chegou até 18:10h (só FDS)
+CUSTO_POR_ENTREGA = 12.00        # Sempre
+
+# Dias de fim de semana
+DIAS_FDS = {'sexta', 'sabado', 'sábado', 'domingo'}
+
+# Palavras-chave para detecção (convertidas para set para busca O(1))
+PALAVRAS_CONFIRMACAO = {'sim', 'confirma', 'confirmo', 'ok', 'correto', 'certo', 'isso', 'exato'}
+PALAVRAS_NEGACAO = {'não', 'nao', 'errado', 'cancela'}
+PALAVRAS_CHAVE_PLANILHA = {'planilha', 'entregador', 'entregadores', 'semana', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'sabado', 'domingo'}
+VERBOS_CRIACAO = {'cria', 'criar', 'faz', 'fazer', 'gera', 'gerar', 'monta', 'montar'}
+
 
 # ============ FUNÇÕES AUXILIARES ============
 
@@ -64,6 +80,39 @@ def escape_markdown(text: str) -> str:
         text = text.replace(char, f'\\{char}')
     
     return text
+
+
+def calcular_custo_dia(dia: str, entregadores: int, chegaram_horario: int, entregas: int) -> dict:
+    """Calcula custos de um dia de entregas
+    
+    Args:
+        dia: Nome do dia da semana
+        entregadores: Número de entregadores escalados
+        chegaram_horario: Quantos chegaram até 18:10h
+        entregas: Total de entregas realizadas
+    
+    Returns:
+        dict com: custo_entregadores, bonus_horario, custo_entregas, total
+    """
+    is_fds = any(d in dia.lower() for d in DIAS_FDS)
+    
+    if is_fds:
+        custo_entregadores = entregadores * CUSTO_ENTREGADOR_FDS
+        bonus_horario = chegaram_horario * BONUS_HORARIO_FDS
+    else:
+        custo_entregadores = entregadores * CUSTO_ENTREGADOR_SEMANA
+        bonus_horario = 0
+    
+    custo_entregas = entregas * CUSTO_POR_ENTREGA
+    total = custo_entregadores + bonus_horario + custo_entregas
+    
+    return {
+        'custo_entregadores': custo_entregadores,
+        'bonus_horario': bonus_horario,
+        'custo_entregas': custo_entregas,
+        'total': total,
+        'is_fds': is_fds
+    }
 
 
 # ============ HANDLERS ============
@@ -312,6 +361,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ===== CRIAÇÃO DE ARQUIVOS =====
         if await handle_criar_arquivo(update, context, text):
+            return
+        
+        # ===== PLANILHA DE ENTREGADORES =====
+        if await handle_planilha_entregadores(update, context, text):
             return
         
         # ===== CONVERSA COM IA =====
@@ -1199,6 +1252,184 @@ def montar_resposta_documento(dados: dict, categoria: str, file_name: str) -> st
         resposta = f"📄 *Documento*\n\n{descricao}"
     
     return resposta
+
+
+async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """Detecta e processa criação de planilha de entregadores"""
+    
+    text_lower = text.lower()
+    user_id = update.effective_user.id
+    
+    # ===== DETECTAR CONFIRMAÇÃO DE PLANILHA PENDENTE =====
+    if 'planilha_pendente' in context.user_data:
+        # Verifica se é confirmação (busca O(1) com set)
+        if any(palavra in text_lower for palavra in PALAVRAS_CONFIRMACAO):
+            # CONFIRMOU - Criar planilha
+            await update.message.reply_text("✅ Confirmado! Criando planilha...")
+            
+            try:
+                dados_planilha = context.user_data['planilha_pendente']
+                
+                # Cria Excel
+                xlsx_bytes = pdf_tools.criar_xlsx_entregadores(
+                    dados_planilha,
+                    custo_semana=CUSTO_ENTREGADOR_SEMANA,
+                    custo_fds=CUSTO_ENTREGADOR_FDS,
+                    bonus_horario=BONUS_HORARIO_FDS,
+                    custo_entrega=CUSTO_POR_ENTREGA
+                )
+                
+                if not xlsx_bytes:
+                    await update.message.reply_text("❌ Erro ao criar planilha Excel")
+                    return True
+                
+                # Cria tópico
+                periodo = dados_planilha.get('periodo', 'Semana')
+                nome_topico = f"📊 Entregadores - {periodo}"
+                
+                try:
+                    result = await context.bot.create_forum_topic(
+                        chat_id=config.GROUP_ID,
+                        name=nome_topico[:100]  # Telegram limita a 100 caracteres
+                    )
+                    topico_id = result.message_thread_id
+                    logger.info(f"✅ Tópico criado: {nome_topico} (ID: {topico_id})")
+                except Exception as e:
+                    logger.error(f"❌ Erro ao criar tópico: {e}")
+                    # Se falhar, envia no tópico Chat
+                    topico_id = config.TOPICS['chat']
+                    await update.message.reply_text(f"⚠️ Não consegui criar tópico novo, enviando no Chat")
+                
+                # Envia planilha no tópico
+                nome_arquivo = f"entregadores_{periodo.replace('/', '_').replace(' ', '_')}.xlsx"
+                
+                await context.bot.send_document(
+                    chat_id=config.GROUP_ID,
+                    message_thread_id=topico_id,
+                    document=io.BytesIO(xlsx_bytes),
+                    filename=nome_arquivo,
+                    caption=f"📊 *Planilha de Entregadores*\n\n{periodo}\n\n✅ Planilha criada automaticamente pelo bot!"
+                )
+                
+                await update.message.reply_text(
+                    f"✅ *Planilha criada com sucesso!*\n\n"
+                    f"📁 Tópico: {nome_topico}\n"
+                    f"📊 Arquivo: {nome_arquivo}\n\n"
+                    f"A planilha já está com todas as fórmulas calculadas! 🎉",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"❌ Erro ao criar planilha: {e}")
+                await update.message.reply_text(f"❌ Erro ao criar planilha: {str(e)}")
+                return True
+            finally:
+                # Sempre limpa dados pendentes
+                context.user_data.pop('planilha_pendente', None)
+        
+        elif any(palavra in text_lower for palavra in PALAVRAS_NEGACAO):
+            # NEGOU - Cancelar
+            await update.message.reply_text(
+                "❌ Planilha cancelada.\n\n"
+                "Se quiser criar outra, descreva a semana novamente! 😊"
+            )
+            context.user_data.pop('planilha_pendente', None)
+            return True
+        
+        # Se não é confirmação nem negação, ignora (pode ser outra conversa)
+        return False
+    
+    # ===== DETECTAR PEDIDO DE NOVA PLANILHA =====
+    # Otimizado: conta palavras-chave em uma única passagem
+    palavras_encontradas = sum(1 for palavra in PALAVRAS_CHAVE_PLANILHA if palavra in text_lower)
+    tem_numeros = any(char.isdigit() for char in text)
+    
+    if palavras_encontradas >= 2 and tem_numeros:
+        # Verifica se menciona verbo de criação
+        tem_verbo = any(verbo in text_lower for verbo in VERBOS_CRIACAO)
+        
+        if tem_verbo or 'planilha' in text_lower:
+            # É pedido de planilha!
+            await update.message.reply_text("⏳ Analisando dados da semana...")
+            
+            try:
+                # Extrai dados com IA
+                resultado = await ai.extrair_dados_entregadores(text)
+                
+                if not resultado['sucesso']:
+                    await update.message.reply_text(
+                        f"❌ Não consegui entender os dados.\n\n"
+                        f"Erro: {resultado.get('erro', 'Desconhecido')}\n\n"
+                        f"Tente descrever assim:\n"
+                        f"'Segunda teve 3 entregadores e 20 entregas\n"
+                        f"Terça teve 3 entregadores e 18 entregas\n"
+                        f"...'"
+                    )
+                    return True
+                
+                dados = resultado['dados']
+                
+                # Calcula totais usando função auxiliar
+                total_entregas = 0
+                total_custo = 0
+                resumo_dias = []
+                
+                for dia_info in dados['dias']:
+                    dia = dia_info['dia']
+                    entregadores = dia_info['entregadores']
+                    chegaram_horario = dia_info['chegaram_horario']
+                    entregas = dia_info['entregas']
+                    
+                    # Usa função auxiliar para calcular custos
+                    custos = calcular_custo_dia(dia, entregadores, chegaram_horario, entregas)
+                    
+                    total_entregas += entregas
+                    total_custo += custos['total']
+                    
+                    # Monta linha do resumo
+                    if custos['is_fds'] and chegaram_horario > 0:
+                        resumo_dias.append(
+                            f"• {dia.capitalize()}: {entregadores} entregadores, "
+                            f"{chegaram_horario} no horário, {entregas} entregas = R$ {custos['total']:,.2f}"
+                        )
+                    else:
+                        resumo_dias.append(
+                            f"• {dia.capitalize()}: {entregadores} entregadores, "
+                            f"{entregas} entregas = R$ {custos['total']:,.2f}"
+                        )
+                
+                # Monta mensagem de confirmação
+                mensagem_confirmacao = (
+                    f"📊 *Entendi! Vou criar a planilha:*\n\n"
+                    f"*{dados.get('periodo', 'Semana')}*\n\n"
+                    f"{chr(10).join(resumo_dias)}\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"💰 *TOTAL DA SEMANA: R$ {total_custo:,.2f}*\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"📋 Resumo:\n"
+                    f"• {len(dados['dias'])} dias\n"
+                    f"• {total_entregas} entregas\n\n"
+                    f"Está correto? *(responda 'sim' ou 'confirma')*"
+                )
+                
+                # Formata valores monetários
+                mensagem_confirmacao = mensagem_confirmacao.replace(',', 'X').replace('.', ',').replace('X', '.')
+                
+                await update.message.reply_text(mensagem_confirmacao, parse_mode=ParseMode.MARKDOWN)
+                
+                # Salva dados pendentes
+                context.user_data['planilha_pendente'] = dados
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"❌ Erro ao processar planilha de entregadores: {e}")
+                await update.message.reply_text(f"❌ Erro ao processar: {str(e)}")
+                return True
+    
+    return False
 
 
 # ============ MAIN ============
