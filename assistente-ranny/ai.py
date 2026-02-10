@@ -540,7 +540,6 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
         resposta_texto = resposta_texto.replace('```json', '').replace('```', '').strip()
         
         # Parse JSON
-        import json
         dados = json.loads(resposta_texto)
         
         # Valida estrutura básica
