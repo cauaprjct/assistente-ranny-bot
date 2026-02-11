@@ -347,6 +347,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if await handle_vencimentos(update, context, text):
             return
         
+        # ===== PLANILHA DE ENTREGADORES ===== (MOVIDO PARA ANTES DA BUSCA)
+        if await handle_planilha_entregadores(update, context, text):
+            return
+        
         # ===== BUSCA DE DOCUMENTOS =====
         if await handle_busca_documentos(update, context, text):
             return
@@ -361,10 +365,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ===== CRIAÇÃO DE ARQUIVOS =====
         if await handle_criar_arquivo(update, context, text):
-            return
-        
-        # ===== PLANILHA DE ENTREGADORES =====
-        if await handle_planilha_entregadores(update, context, text):
             return
         
         # ===== CONVERSA COM IA =====
