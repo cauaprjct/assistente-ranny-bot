@@ -1307,34 +1307,53 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     await update.message.reply_text("❌ Erro ao criar planilha Versão 2 (com nomes)")
                     return True
                 
-                # Usa tópico fixo ou cria na primeira vez
-                topico_id = config.TOPICS.get('planilha_entregadores', 0)
+                # ===== TÓPICO PARA VERSÃO COM NOMES =====
+                topico_com_nomes = config.TOPICS.get('planilha_entregadores_com_nomes', 0)
                 
                 # Se não tem tópico configurado (0), cria um fixo
-                if not topico_id or topico_id == 0:
+                if not topico_com_nomes or topico_com_nomes == 0:
                     try:
                         result = await context.bot.create_forum_topic(
                             chat_id=config.GROUP_ID,
-                            name="📊 Planilha dos Entregadores"
+                            name="📊 Planilhas COM NOMES (Ranny)"
                         )
-                        topico_id = result.message_thread_id
-                        logger.info(f"✅ Tópico criado: Planilha dos Entregadores (ID: {topico_id})")
-                        logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES={topico_id}")
+                        topico_com_nomes = result.message_thread_id
+                        logger.info(f"✅ Tópico criado: Planilhas COM NOMES (ID: {topico_com_nomes})")
+                        logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES_COM_NOMES={topico_com_nomes}")
                     except Exception as e:
-                        logger.error(f"❌ Erro ao criar tópico: {e}")
+                        logger.error(f"❌ Erro ao criar tópico COM NOMES: {e}")
                         # Se falhar, envia no tópico Chat
-                        topico_id = config.TOPICS['chat']
-                        await update.message.reply_text(f"⚠️ Não consegui criar tópico, enviando no Chat")
+                        topico_com_nomes = config.TOPICS['chat']
+                        await update.message.reply_text(f"⚠️ Não consegui criar tópico COM NOMES, enviando no Chat")
+                
+                # ===== TÓPICO PARA VERSÃO SEM NOMES =====
+                topico_sem_nomes = config.TOPICS.get('planilha_entregadores_sem_nomes', 0)
+                
+                # Se não tem tópico configurado (0), cria um fixo
+                if not topico_sem_nomes or topico_sem_nomes == 0:
+                    try:
+                        result = await context.bot.create_forum_topic(
+                            chat_id=config.GROUP_ID,
+                            name="📊 Planilhas SEM NOMES (Responsável)"
+                        )
+                        topico_sem_nomes = result.message_thread_id
+                        logger.info(f"✅ Tópico criado: Planilhas SEM NOMES (ID: {topico_sem_nomes})")
+                        logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES_SEM_NOMES={topico_sem_nomes}")
+                    except Exception as e:
+                        logger.error(f"❌ Erro ao criar tópico SEM NOMES: {e}")
+                        # Se falhar, envia no tópico Chat
+                        topico_sem_nomes = config.TOPICS['chat']
+                        await update.message.reply_text(f"⚠️ Não consegui criar tópico SEM NOMES, enviando no Chat")
                 
                 # Envia VERSÃO 2 (com nomes) - para Ranny
                 nome_arquivo_v2 = f"entregadores_COM_NOMES_{periodo.replace('/', '_').replace(' ', '_')}.xlsx"
                 
                 await context.bot.send_document(
                     chat_id=config.GROUP_ID,
-                    message_thread_id=topico_id,
+                    message_thread_id=topico_com_nomes,
                     document=io.BytesIO(xlsx_v2_bytes),
                     filename=nome_arquivo_v2,
-                    caption=f"📊 *Planilha COM NOMES (para você)*\n\n{periodo}\n\n✅ Versão detalhada com nomes dos entregadores!",
+                    caption=f"📊 *Planilha COM NOMES*\n\n{periodo}\n\n✅ Versão detalhada com nomes dos entregadores!\n\n💡 Esta planilha é para você (Ranny)",
                     parse_mode=ParseMode.MARKDOWN
                 )
                 
@@ -1343,20 +1362,19 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                 
                 await context.bot.send_document(
                     chat_id=config.GROUP_ID,
-                    message_thread_id=topico_id,
+                    message_thread_id=topico_sem_nomes,
                     document=io.BytesIO(xlsx_v1_bytes),
                     filename=nome_arquivo_v1,
-                    caption=f"📊 *Planilha SEM NOMES (para responsável)*\n\n{periodo}\n\n✅ Versão resumida por dia!",
+                    caption=f"📊 *Planilha SEM NOMES*\n\n{periodo}\n\n✅ Versão resumida por dia!\n\n💡 Esta planilha é para o responsável",
                     parse_mode=ParseMode.MARKDOWN
                 )
                 
                 await update.message.reply_text(
                     f"✅ *Planilhas criadas com sucesso!*\n\n"
-                    f"📁 Tópico: Planilha dos Entregadores\n\n"
-                    f"📊 *Versão 1 (COM NOMES):*\n"
-                    f"   Para você - mostra cada entregador\n\n"
-                    f"📊 *Versão 2 (SEM NOMES):*\n"
-                    f"   Para o responsável - resumo por dia\n\n"
+                    f"📁 *Tópico 1:* Planilhas COM NOMES (Ranny)\n"
+                    f"   → Versão detalhada com cada entregador\n\n"
+                    f"📁 *Tópico 2:* Planilhas SEM NOMES (Responsável)\n"
+                    f"   → Versão resumida por dia\n\n"
                     f"Ambas já estão com todas as fórmulas calculadas! 🎉",
                     parse_mode=ParseMode.MARKDOWN
                 )

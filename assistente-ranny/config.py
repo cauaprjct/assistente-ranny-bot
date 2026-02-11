@@ -100,7 +100,8 @@ TOPICS = {
     'operacional': int(os.getenv('TOPIC_OPERACIONAL', '214')),
     'midia': int(os.getenv('TOPIC_MIDIA', '215')),
     'controles': int(os.getenv('TOPIC_CONTROLES', '216')),
-    'planilha_entregadores': int(os.getenv('TOPIC_PLANILHA_ENTREGADORES', '0')),  # 0 = criar automaticamente
+    'planilha_entregadores_com_nomes': int(os.getenv('TOPIC_PLANILHA_ENTREGADORES_COM_NOMES', '0')),  # 0 = criar automaticamente
+    'planilha_entregadores_sem_nomes': int(os.getenv('TOPIC_PLANILHA_ENTREGADORES_SEM_NOMES', '0')),  # 0 = criar automaticamente
 }
 
 # Calendário de obrigações fixas (dia do mês)
