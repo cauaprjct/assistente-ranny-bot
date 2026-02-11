@@ -1833,12 +1833,12 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         ws.title = "Entregadores"
         
         # Estilos
-        title_font = Font(bold=True, size=14, color="FFFFFF")
-        title_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        title_font = Font(bold=True, size=14, color="000000")
+        title_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
         title_align = Alignment(horizontal="center", vertical="center")
         
         header_font = Font(bold=True, size=10, color="000000")
-        header_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        header_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
         header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
         
         data_align = Alignment(horizontal="center", vertical="center")
@@ -1854,7 +1854,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         periodo = dados.get('periodo', 'Semana')
         
         # Linha 1: Título
-        num_colunas = 1 + len(dias_ordenados) + 4  # NOMES + dias + TOTAL + ENTREGAS + VALOR + R$ MOTO
+        num_colunas = 1 + len(dias_ordenados) + 4  # NOMES + dias + TOTAL + ENTREGAS + VALOR + A PAGAR
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_colunas)
         title_cell = ws['A1']
         title_cell.value = f"📊 ENTREGADORES - {periodo.upper()}"
@@ -1887,8 +1887,8 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             ws.column_dimensions[get_column_letter(col_num)].width = 12
             col_num += 1
         
-        # Últimas colunas: TOTAL, ENTREGAS, VALOR, R$ MOTO
-        for header in ["TOTAL", "ENTREGAS", "VALOR", "R$ MOTO"]:
+        # Últimas colunas: TOTAL, ENTREGAS, VALOR, A PAGAR
+        for header in ["TOTAL", "ENTREGAS", "VALOR", "A PAGAR"]:
             cell = ws.cell(row=2, column=col_num, value=header)
             cell.font = header_font
             cell.fill = header_fill
@@ -1901,7 +1901,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
         # Linhas 3+: Dados dos entregadores
         row_num = 3
-        alt_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+        alt_fill = PatternFill(start_color="DAEEF3", end_color="DAEEF3", fill_type="solid")
         
         for idx, nome in enumerate(lista_entregadores):
             # Coluna A: Nome do entregador
@@ -1960,7 +1960,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
                 cell.fill = alt_fill
             col_num += 1
             
-            # Coluna R$ MOTO: deixa vazio (será preenchido manualmente)
+            # Coluna A PAGAR: deixa vazio (será preenchido manualmente)
             cell = ws.cell(row=row_num, column=col_num, value="")
             cell.alignment = data_align
             cell.border = thin_border
@@ -1971,7 +1971,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
         # Linha TOTAL (soma de todos os entregadores)
         total_row = row_num
-        total_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        total_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
         total_font = Font(bold=True, size=11)
         
         # Coluna A: "TOTAL"
@@ -1994,7 +1994,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             col_num += 1
         
         # Colunas finais: somas
-        for _ in range(4):  # TOTAL, ENTREGAS, VALOR, R$ MOTO
+        for _ in range(4):  # TOTAL, ENTREGAS, VALOR, A PAGAR
             col_letter = get_column_letter(col_num)
             formula = f"=SUM({col_letter}3:{col_letter}{total_row-1})"
             cell = ws.cell(row=total_row, column=col_num, value=formula)
