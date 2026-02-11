@@ -1258,8 +1258,20 @@ def editar_xlsx_adicionar_linha(xlsx_bytes: bytes, dados: list, planilha: str = 
         else:
             ws = wb.active
         
-        # Adiciona a linha no final
-        ws.append(dados)
+        # Adiciona a linha no final com estilo
+        next_row = ws.max_row + 1
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        data_align = Alignment(horizontal="left", vertical="center")
+        
+        for col_num, valor in enumerate(dados, 1):
+            cell = ws.cell(row=next_row, column=col_num, value=valor)
+            cell.border = thin_border
+            cell.alignment = data_align
         
         # Salva em bytes
         output = io.BytesIO()
@@ -1295,9 +1307,26 @@ def editar_xlsx_adicionar_linhas(xlsx_bytes: bytes, linhas: list, planilha: str 
         else:
             ws = wb.active
         
-        # Adiciona as linhas
+        # Adiciona as linhas com estilo
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        data_align = Alignment(horizontal="left", vertical="center")
+        
         for linha in linhas:
-            ws.append(linha)
+            next_row = ws.max_row + 1
+            if isinstance(linha, (list, tuple)):
+                for col_num, valor in enumerate(linha, 1):
+                    cell = ws.cell(row=next_row, column=col_num, value=valor)
+                    cell.border = thin_border
+                    cell.alignment = data_align
+            else:
+                cell = ws.cell(row=next_row, column=1, value=linha)
+                cell.border = thin_border
+                cell.alignment = data_align
         
         # Salva em bytes
         output = io.BytesIO()
@@ -1376,6 +1405,15 @@ def editar_xlsx_remover_linha(xlsx_bytes: bytes, numero_linha: int, planilha: st
             ws = wb[planilha]
         else:
             ws = wb.active
+        
+        # Validação de limites
+        if numero_linha < 1:
+            logger.error("Número de linha inválido (< 1)")
+            return None
+        
+        if numero_linha > ws.max_row:
+            logger.error(f"Linha {numero_linha} não existe (máx: {ws.max_row})")
+            return None
         
         # Remove a linha
         ws.delete_rows(numero_linha)
@@ -1528,8 +1566,29 @@ def criar_xlsx_entregadores(dados: dict, custo_semana: float = 1.0, custo_fds: f
         dias_data = dados.get('dias', [])
         row_num = 4
         
+        # Detecta formato: se algum dia contém "/", é formato de data (mensal)
+        formato_data = any('/' in str(dia_info.get('dia', '')) for dia_info in dias_data)
+        
         # Mapeamento de dias para identificar fim de semana
         dias_fds = {'sexta', 'sabado', 'sábado', 'domingo'}
+        
+        # Função auxiliar para determinar se é FDS
+        def is_fim_de_semana(dia_str):
+            if formato_data:
+                # Formato de data: parseia e verifica weekday
+                try:
+                    from datetime import datetime
+                    # Assume formato DD/MM
+                    dia_num, mes_num = dia_str.split('/')
+                    ano_atual = datetime.now().year
+                    data = datetime(ano_atual, int(mes_num), int(dia_num))
+                    # weekday: 0=segunda, 4=sexta, 5=sábado, 6=domingo
+                    return data.weekday() >= 4
+                except:
+                    return False
+            else:
+                # Formato de nome de dia
+                return any(d in dia_str.lower() for d in dias_fds)
         
         alt_fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
         fds_fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
@@ -1541,10 +1600,13 @@ def criar_xlsx_entregadores(dados: dict, custo_semana: float = 1.0, custo_fds: f
             entregas = dia_info.get('entregas', 0)
             
             # Determina se é fim de semana
-            is_fds = any(d in dia for d in dias_fds)
+            is_fds = is_fim_de_semana(dia)
+            
+            # Formata dia para exibição
+            dia_display = dia.capitalize() if not formato_data else dia
             
             # Coluna A: Dia
-            cell = ws.cell(row=row_num, column=1, value=dia.capitalize())
+            cell = ws.cell(row=row_num, column=1, value=dia_display)
             cell.alignment = data_align
             cell.border = thin_border
             if is_fds:
@@ -1682,6 +1744,84 @@ def criar_xlsx_entregadores(dados: dict, custo_semana: float = 1.0, custo_fds: f
         for col_letter, width in column_widths.items():
             ws.column_dimensions[col_letter].width = width
         
+        # ===== ADICIONA GRÁFICOS =====
+        try:
+            from openpyxl.chart import BarChart, PieChart, Reference
+            from openpyxl.chart.label import DataLabelList
+            
+            # GRÁFICO 1: Entregas por Dia (Colunas)
+            chart1 = BarChart()
+            chart1.type = "col"
+            chart1.style = 10
+            chart1.title = "📊 Entregas por Dia"
+            chart1.y_axis.title = 'Quantidade'
+            chart1.x_axis.title = 'Dia'
+            
+            # Dados: Dias (A4:A{total_row-1}) e Entregas (D4:D{total_row-1})
+            data1 = Reference(ws, min_col=4, min_row=3, max_row=total_row-1)
+            cats1 = Reference(ws, min_col=1, min_row=4, max_row=total_row-1)
+            chart1.add_data(data1, titles_from_data=True)
+            chart1.set_categories(cats1)
+            
+            # Estilo
+            chart1.height = 10
+            chart1.width = 20
+            
+            # Posiciona o gráfico
+            ws.add_chart(chart1, f"J3")
+            
+            # GRÁFICO 2: Distribuição de Custos (Pizza)
+            chart2 = PieChart()
+            chart2.title = "💰 Distribuição de Custos"
+            
+            # Dados: Totais de cada tipo de custo (E{total_row}, F{total_row}, G{total_row})
+            # Cria referências para os totais
+            data2 = Reference(ws, min_col=5, min_row=total_row, max_col=7, max_row=total_row)
+            labels2 = Reference(ws, min_col=5, min_row=3, max_col=7, max_row=3)
+            
+            chart2.add_data(data2, titles_from_data=True)
+            chart2.set_categories(labels2)
+            
+            # Mostra valores e porcentagens
+            chart2.dataLabels = DataLabelList()
+            chart2.dataLabels.showPercent = True
+            chart2.dataLabels.showVal = True
+            
+            # Estilo
+            chart2.height = 10
+            chart2.width = 15
+            
+            # Posiciona o gráfico
+            ws.add_chart(chart2, f"J19")
+            
+            # GRÁFICO 3: Custo Total por Dia (Barras Horizontais)
+            chart3 = BarChart()
+            chart3.type = "bar"
+            chart3.style = 11
+            chart3.title = "💵 Custo Total por Dia"
+            chart3.y_axis.title = 'Dia'
+            chart3.x_axis.title = 'Valor (R$)'
+            
+            # Dados: Dias e Total (H4:H{total_row-1})
+            data3 = Reference(ws, min_col=8, min_row=3, max_row=total_row-1)
+            cats3 = Reference(ws, min_col=1, min_row=4, max_row=total_row-1)
+            chart3.add_data(data3, titles_from_data=True)
+            chart3.set_categories(cats3)
+            
+            # Estilo
+            chart3.height = 10
+            chart3.width = 20
+            
+            # Posiciona o gráfico
+            ws.add_chart(chart3, f"W3")
+            
+            logger.info("✅ Gráficos adicionados à planilha")
+            
+        except ImportError:
+            logger.warning("⚠️ openpyxl.chart não disponível - gráficos não adicionados")
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao adicionar gráficos: {e}")
+        
         # Salva em bytes
         buffer = io.BytesIO()
         wb.save(buffer)
@@ -1746,7 +1886,10 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
         dias_data = dados.get('dias', [])
         
-        # Mapeamento de dias da semana
+        # Detecta formato: se algum dia contém "/", é formato de data (mensal)
+        formato_data = any('/' in str(dia_info.get('dia', '')) for dia_info in dias_data)
+        
+        # Mapeamento de dias da semana (para formato semanal)
         dias_semana_map = {
             'segunda': 'Segunda',
             'terca': 'Terça',
@@ -1759,7 +1902,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             'domingo': 'Domingo'
         }
         
-        # Lista ordenada de dias da semana
+        # Lista ordenada de dias da semana (para formato semanal)
         ordem_dias = ['segunda', 'terca', 'terça', 'quarta', 'quinta', 'sexta', 'sabado', 'sábado', 'domingo']
         dias_presentes = []
         
@@ -1789,11 +1932,19 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
                     entregas = entregas_por_pessoa + (1 if idx < resto else 0)
                     entregas_por_dia_pessoa[dia][nome] = entregas
         
-        # Ordena dias presentes pela ordem da semana
-        dias_ordenados = []
-        for dia_ordem in ordem_dias:
-            if dia_ordem in dias_presentes:
-                dias_ordenados.append(dia_ordem)
+        # Ordena dias presentes
+        if formato_data:
+            # Para datas, ordena cronologicamente
+            try:
+                dias_ordenados = sorted(dias_presentes, key=lambda d: (int(d.split('/')[1]), int(d.split('/')[0])))
+            except:
+                dias_ordenados = dias_presentes
+        else:
+            # Para nomes de dias, ordena pela ordem da semana
+            dias_ordenados = []
+            for dia_ordem in ordem_dias:
+                if dia_ordem in dias_presentes:
+                    dias_ordenados.append(dia_ordem)
         
         if not dias_ordenados:
             logger.error("Nenhum dia encontrado nos dados")
@@ -1876,9 +2027,15 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         ws.column_dimensions['A'].width = 20
         col_num += 1
         
-        # Colunas dos dias da semana
+        # Colunas dos dias da semana/datas
         for dia in dias_ordenados:
-            dia_nome = dias_semana_map.get(dia, dia.capitalize())
+            if formato_data:
+                # Para datas, usa a data diretamente
+                dia_nome = dia
+            else:
+                # Para nomes de dias, usa o mapeamento
+                dia_nome = dias_semana_map.get(dia, dia.capitalize())
+            
             cell = ws.cell(row=2, column=col_num, value=dia_nome)
             cell.font = header_font
             cell.fill = header_fill
@@ -2011,6 +2168,98 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
         ws.row_dimensions[total_row].height = 20
         
+        # ===== ADICIONA GRÁFICOS =====
+        try:
+            from openpyxl.chart import BarChart, PieChart, Reference
+            from openpyxl.chart.label import DataLabelList
+            
+            # Calcula posição inicial dos gráficos (após as colunas de dados)
+            col_grafico_inicio = len(dias_ordenados) + 7  # Após NOMES + dias + TOTAL + ENTREGAS + VALOR + A PAGAR
+            col_grafico_letra = get_column_letter(col_grafico_inicio)
+            
+            # GRÁFICO 1: Top 10 Entregadores (Barras Horizontais)
+            chart1 = BarChart()
+            chart1.type = "bar"
+            chart1.style = 11
+            chart1.title = "🏆 Top 10 Entregadores"
+            chart1.y_axis.title = 'Entregador'
+            chart1.x_axis.title = 'Entregas'
+            
+            # Pega os 10 primeiros entregadores (ou menos se houver menos)
+            num_entregadores_grafico = min(10, len(lista_entregadores))
+            
+            # Dados: Nomes (A3:A{3+num_entregadores_grafico-1}) e Total de Entregas (coluna TOTAL)
+            col_total = len(dias_ordenados) + 2  # NOMES + dias + TOTAL
+            data1 = Reference(ws, min_col=col_total, min_row=2, max_row=2+num_entregadores_grafico)
+            cats1 = Reference(ws, min_col=1, min_row=3, max_row=2+num_entregadores_grafico)
+            chart1.add_data(data1, titles_from_data=True)
+            chart1.set_categories(cats1)
+            
+            # Estilo
+            chart1.height = 12
+            chart1.width = 18
+            
+            # Posiciona o gráfico
+            ws.add_chart(chart1, f"{col_grafico_letra}2")
+            
+            # GRÁFICO 2: Entregas por Dia (Colunas)
+            chart2 = BarChart()
+            chart2.type = "col"
+            chart2.style = 10
+            chart2.title = "📊 Entregas por Dia"
+            chart2.y_axis.title = 'Quantidade'
+            chart2.x_axis.title = 'Dia'
+            
+            # Dados: Dias (colunas 2 até len(dias_ordenados)+1) na linha TOTAL
+            data2 = Reference(ws, min_col=2, min_row=total_row, max_col=len(dias_ordenados)+1, max_row=total_row)
+            cats2 = Reference(ws, min_col=2, min_row=2, max_col=len(dias_ordenados)+1, max_row=2)
+            chart2.add_data(data2, titles_from_data=True)
+            chart2.set_categories(cats2)
+            
+            # Estilo
+            chart2.height = 10
+            chart2.width = 20
+            
+            # Posiciona o gráfico abaixo do primeiro
+            ws.add_chart(chart2, f"{col_grafico_letra}20")
+            
+            # GRÁFICO 3: Distribuição de Entregas (Pizza) - Top 5
+            if len(lista_entregadores) >= 3:
+                chart3 = PieChart()
+                chart3.title = "🍕 Distribuição de Entregas (Top 5)"
+                
+                # Pega os 5 primeiros entregadores
+                num_top5 = min(5, len(lista_entregadores))
+                
+                # Dados: Total de entregas dos top 5
+                data3 = Reference(ws, min_col=col_total, min_row=3, max_row=2+num_top5)
+                labels3 = Reference(ws, min_col=1, min_row=3, max_row=2+num_top5)
+                
+                chart3.add_data(data3, titles_from_data=False)
+                chart3.set_categories(labels3)
+                
+                # Mostra valores e porcentagens
+                chart3.dataLabels = DataLabelList()
+                chart3.dataLabels.showPercent = True
+                chart3.dataLabels.showVal = True
+                
+                # Estilo
+                chart3.height = 10
+                chart3.width = 15
+                
+                # Posiciona o gráfico
+                col_grafico2_letra = get_column_letter(col_grafico_inicio + 12)
+                ws.add_chart(chart3, f"{col_grafico2_letra}20")
+            
+            logger.info("✅ Gráficos adicionados à planilha COM NOMES")
+            
+        except ImportError:
+            logger.warning("⚠️ openpyxl.chart não disponível - gráficos não adicionados")
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao adicionar gráficos: {e}")
+            import traceback
+            logger.warning(traceback.format_exc())
+        
         # Salva em bytes
         buffer = io.BytesIO()
         wb.save(buffer)
@@ -2023,6 +2272,507 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
     except Exception as e:
         logger.error(f"Erro ao criar XLSX de entregadores com nomes: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+
+# ============ FUNÇÃO PARA PLANILHAS PERSONALIZADAS ============
+
+def criar_xlsx_estruturada(estrutura: dict, dados: list = None) -> Optional[bytes]:
+    """Cria planilha Excel estruturada baseada em estrutura definida
+    
+    Args:
+        estrutura: Dicionário com estrutura da planilha:
+            {
+                "titulo": "Nome da Planilha",
+                "colunas": [
+                    {"nome": "Col1", "tipo": "texto|numero|moeda|data", "largura": 15},
+                    ...
+                ],
+                "tem_total": True/False,
+                "colunas_total": ["Col1", "Col2"]
+            }
+        dados: Lista de listas com dados (opcional)
+    
+    Returns:
+        bytes do XLSX ou None se falhar
+    """
+    if not HAS_XLSX:
+        logger.error("openpyxl não instalado")
+        return None
+    
+    try:
+        # Valida estrutura
+        if not estrutura or not isinstance(estrutura, dict):
+            logger.error("Estrutura inválida: deve ser um dicionário")
+            return None
+        
+        if 'colunas' not in estrutura or not isinstance(estrutura['colunas'], list):
+            logger.error("Estrutura inválida: falta 'colunas' ou não é lista")
+            return None
+        
+        colunas = estrutura.get('colunas', [])
+        num_colunas = len(colunas)
+        
+        if num_colunas == 0:
+            logger.error("Estrutura inválida: nenhuma coluna definida")
+            return None
+        wb = Workbook()
+        ws = wb.active
+        ws.title = estrutura.get('titulo', 'Planilha')[:31]  # Excel limita a 31 caracteres
+        
+        # Estilos
+        title_font = Font(bold=True, size=14, color="FFFFFF")
+        title_fill = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
+        title_align = Alignment(horizontal="center", vertical="center")
+        
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="3498DB", end_color="3498DB", fill_type="solid")
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        data_align = Alignment(horizontal="center", vertical="center")
+        
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        thick_border = Border(
+            left=Side(style='medium'),
+            right=Side(style='medium'),
+            top=Side(style='medium'),
+            bottom=Side(style='medium')
+        )
+        
+        # Linha 1: Título
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_colunas)
+        title_cell = ws['A1']
+        title_cell.value = f"📊 {estrutura.get('titulo', 'PLANILHA').upper()}"
+        title_cell.font = title_font
+        title_cell.fill = title_fill
+        title_cell.alignment = title_align
+        title_cell.border = thick_border
+        ws.row_dimensions[1].height = 30
+        
+        # Linha 2: Vazia (espaçamento)
+        ws.row_dimensions[2].height = 5
+        
+        # Linha 3: Cabeçalhos
+        for col_num, coluna in enumerate(colunas, 1):
+            cell = ws.cell(row=3, column=col_num, value=coluna['nome'])
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+            
+            # Ajusta largura
+            largura = coluna.get('largura', 15)
+            ws.column_dimensions[get_column_letter(col_num)].width = largura
+        
+        ws.row_dimensions[3].height = 25
+        
+        # Dados
+        alt_fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+        
+        if dados:
+            for row_idx, linha_dados in enumerate(dados, 4):
+                for col_idx, (valor, coluna) in enumerate(zip(linha_dados, colunas), 1):
+                    cell = ws.cell(row=row_idx, column=col_idx)
+                    cell.border = thin_border
+                    
+                    # Converte e valida tipo de dado
+                    tipo = coluna.get('tipo', 'texto')
+                    try:
+                        if tipo == 'moeda' or tipo == 'numero':
+                            # Tenta converter para número
+                            if isinstance(valor, str):
+                                valor_limpo = valor.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                                valor = float(valor_limpo) if valor_limpo else 0
+                            elif not isinstance(valor, (int, float)):
+                                valor = 0
+                            cell.value = valor
+                            
+                            if tipo == 'moeda':
+                                cell.number_format = 'R$ #,##0.00'
+                                cell.alignment = Alignment(horizontal="right", vertical="center")
+                            else:
+                                cell.number_format = '#,##0'
+                                cell.alignment = data_align
+                        
+                        elif tipo == 'porcentagem':
+                            # Tenta converter para número (0.15 = 15%)
+                            if isinstance(valor, str):
+                                valor_limpo = valor.replace('%', '').strip()
+                                valor = float(valor_limpo) / 100 if valor_limpo else 0
+                            elif not isinstance(valor, (int, float)):
+                                valor = 0
+                            cell.value = valor
+                            cell.number_format = '0.00%'
+                            cell.alignment = data_align
+                        
+                        elif tipo == 'data':
+                            # Mantém como string (formato DD/MM/YYYY)
+                            cell.value = str(valor) if valor else ''
+                            cell.number_format = 'DD/MM/YYYY'
+                            cell.alignment = data_align
+                        
+                        else:  # texto
+                            cell.value = str(valor) if valor else ''
+                            cell.alignment = Alignment(horizontal="left", vertical="center")
+                    
+                    except (ValueError, AttributeError) as e:
+                        # Se falhar conversão, usa como texto
+                        logger.warning(f"Erro ao converter valor '{valor}' para tipo '{tipo}': {e}")
+                        cell.value = str(valor) if valor else ''
+                        cell.alignment = Alignment(horizontal="left", vertical="center")
+                    
+                    # Zebra stripes
+                    if (row_idx - 4) % 2 == 1:
+                        cell.fill = alt_fill
+        
+        # Linha de TOTAL (se necessário)
+        if estrutura.get('tem_total', False) and dados:
+            total_row = len(dados) + 4
+            total_fill = PatternFill(start_color="27AE60", end_color="27AE60", fill_type="solid")
+            total_font = Font(bold=True, color="FFFFFF", size=12)
+            
+            colunas_total = estrutura.get('colunas_total', [])
+            
+            for col_idx, coluna in enumerate(colunas, 1):
+                cell = ws.cell(row=total_row, column=col_idx)
+                cell.font = total_font
+                cell.fill = total_fill
+                cell.border = thick_border
+                
+                if col_idx == 1:
+                    cell.value = "TOTAL"
+                    cell.alignment = data_align
+                elif coluna['nome'] in colunas_total:
+                    # Cria fórmula de soma
+                    col_letter = get_column_letter(col_idx)
+                    formula = f"=SUM({col_letter}4:{col_letter}{total_row-1})"
+                    cell.value = formula
+                    
+                    # Formato baseado no tipo
+                    if coluna.get('tipo') == 'moeda':
+                        cell.number_format = 'R$ #,##0.00'
+                        cell.alignment = Alignment(horizontal="right", vertical="center")
+                    else:
+                        cell.number_format = '#,##0'
+                        cell.alignment = data_align
+                else:
+                    cell.value = ""
+                    cell.alignment = data_align
+            
+            ws.row_dimensions[total_row].height = 25
+        
+        # Salva em bytes
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        
+        result = buffer.getvalue()
+        buffer.close()
+        
+        logger.info(f"XLSX estruturada criada: {len(result)} bytes, {num_colunas} colunas, {len(dados) if dados else 0} linhas")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Erro ao criar XLSX estruturada: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+def aplicar_edicao_planilha(xlsx_bytes: bytes, acao: str, parametros: dict, estrutura: dict) -> Optional[Tuple[bytes, str]]:
+    """Aplica edição em planilha Excel existente
+    
+    Args:
+        xlsx_bytes: bytes da planilha original
+        acao: Tipo de ação (adicionar_linha|editar_celula|remover_linha|editar_coluna|substituir_valor)
+        parametros: Parâmetros da ação
+        estrutura: Estrutura da planilha (colunas, tipos)
+    
+    Returns:
+        Tuple (bytes da planilha modificada, mensagem de sucesso) ou None se falhar
+    """
+    if not HAS_XLSX:
+        logger.error("openpyxl não instalado")
+        return None
+    
+    try:
+        # Carrega workbook
+        wb = load_workbook(io.BytesIO(xlsx_bytes))
+        ws = wb.active
+        
+        # Estilos padrão para formatação
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        data_align = Alignment(horizontal="center", vertical="center")
+        
+        # Identifica linha de dados (pula título e cabeçalho)
+        primeira_linha_dados = 4
+        
+        if acao == 'adicionar_linha':
+            # Adiciona nova linha de dados
+            valores = parametros.get('valores', [])
+            if not valores:
+                return None
+            
+            # Encontra próxima linha vazia
+            proxima_linha = ws.max_row + 1
+            
+            # Se tem linha de TOTAL, insere uma nova linha ANTES dela
+            if estrutura.get('tem_total', False):
+                linha_total = ws.max_row
+                ws.insert_rows(linha_total)  # Insere linha vazia antes do TOTAL
+                proxima_linha = linha_total  # Nova linha de dados
+            
+            # Adiciona valores
+            colunas = estrutura.get('colunas', [])
+            for col_idx, (valor, coluna) in enumerate(zip(valores, colunas), 1):
+                cell = ws.cell(row=proxima_linha, column=col_idx)
+                
+                # Converte tipo
+                tipo = coluna.get('tipo', 'texto')
+                try:
+                    if tipo in ['moeda', 'numero']:
+                        if isinstance(valor, str):
+                            valor_limpo = valor.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                            cell.value = float(valor_limpo) if valor_limpo else 0
+                        else:
+                            cell.value = float(valor) if valor else 0
+                        
+                        if tipo == 'moeda':
+                            cell.number_format = 'R$ #,##0.00'
+                        else:
+                            cell.number_format = '#,##0'
+                    
+                    elif tipo == 'porcentagem':
+                        if isinstance(valor, str):
+                            valor_limpo = valor.replace('%', '').strip()
+                            cell.value = float(valor_limpo) / 100 if valor_limpo else 0
+                        else:
+                            cell.value = float(valor) / 100 if valor else 0
+                        cell.number_format = '0.00%'
+                    
+                    else:
+                        cell.value = str(valor) if valor else ''
+                
+                except (ValueError, AttributeError):
+                    cell.value = str(valor) if valor else ''
+                
+                # Copia formatação da linha anterior (se existir)
+                if proxima_linha > primeira_linha_dados:
+                    cell_anterior = ws.cell(row=proxima_linha-1, column=col_idx)
+                    cell.font = cell_anterior.font.copy()
+                    cell.border = cell_anterior.border.copy()
+                    cell.alignment = cell_anterior.alignment.copy()
+                else:
+                    # Primeira linha de dados - aplica formatação padrão
+                    cell.border = thin_border
+                    cell.alignment = data_align
+                
+                # Aplica zebra stripes (alternar cores)
+                if estrutura.get('tem_total', False):
+                    # Conta linhas de dados (excluindo título, cabeçalho e TOTAL)
+                    num_dados = proxima_linha - primeira_linha_dados
+                else:
+                    num_dados = proxima_linha - primeira_linha_dados + 1
+                
+                if num_dados % 2 == 0:  # Linha par = zebra
+                    cell.fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+            
+            mensagem = f"✅ Linha adicionada com sucesso!"
+        
+        elif acao == 'editar_celula':
+            # Edita célula específica
+            linha = parametros.get('linha')
+            coluna_nome = parametros.get('coluna')
+            valores = parametros.get('valores', [])
+            
+            if not linha or not valores:
+                return None
+            
+            # Converte linha para índice real (usuário conta a partir de 1, mas pula título/cabeçalho)
+            linha_real = primeira_linha_dados + int(linha) - 1
+            
+            # Encontra índice da coluna
+            colunas = estrutura.get('colunas', [])
+            col_idx = None
+            coluna_info = None
+            
+            for idx, col in enumerate(colunas, 1):
+                if col['nome'].lower() == coluna_nome.lower():
+                    col_idx = idx
+                    coluna_info = col
+                    break
+            
+            if not col_idx:
+                # Se não encontrou por nome, tenta por índice
+                try:
+                    col_idx = int(coluna_nome)
+                    coluna_info = colunas[col_idx - 1]
+                except (ValueError, IndexError):
+                    return None
+            
+            # Edita célula
+            cell = ws.cell(row=linha_real, column=col_idx)
+            novo_valor = valores[0]
+            
+            # Converte tipo
+            tipo = coluna_info.get('tipo', 'texto')
+            try:
+                if tipo in ['moeda', 'numero']:
+                    if isinstance(novo_valor, str):
+                        valor_limpo = novo_valor.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                        cell.value = float(valor_limpo) if valor_limpo else 0
+                    else:
+                        cell.value = float(novo_valor) if novo_valor else 0
+                elif tipo == 'porcentagem':
+                    if isinstance(novo_valor, str):
+                        valor_limpo = novo_valor.replace('%', '').strip()
+                        cell.value = float(valor_limpo) / 100 if valor_limpo else 0
+                    else:
+                        cell.value = float(novo_valor) / 100 if novo_valor else 0
+                else:
+                    cell.value = str(novo_valor) if novo_valor else ''
+            except (ValueError, AttributeError):
+                cell.value = str(novo_valor) if novo_valor else ''
+            
+            mensagem = f"✅ Célula editada: linha {linha}, coluna {coluna_nome}"
+        
+        elif acao == 'remover_linha':
+            # Remove linha
+            linha = parametros.get('linha')
+            
+            if not linha:
+                return None
+            
+            if linha == 'ultima':
+                # Remove última linha de dados (antes do TOTAL se houver)
+                linha_remover = ws.max_row
+                if estrutura.get('tem_total', False):
+                    linha_remover = ws.max_row - 1
+            else:
+                # Converte para índice real
+                linha_remover = primeira_linha_dados + int(linha) - 1
+            
+            ws.delete_rows(linha_remover, 1)
+            mensagem = f"✅ Linha removida com sucesso!"
+        
+        elif acao == 'editar_coluna':
+            # Aplica operação em coluna inteira
+            coluna_nome = parametros.get('coluna')
+            operacao = parametros.get('operacao')
+            fator = parametros.get('fator', 1)
+            
+            if not coluna_nome or not operacao:
+                return None
+            
+            # Encontra índice da coluna
+            colunas = estrutura.get('colunas', [])
+            col_idx = None
+            
+            for idx, col in enumerate(colunas, 1):
+                if col['nome'].lower() == coluna_nome.lower():
+                    col_idx = idx
+                    break
+            
+            if not col_idx:
+                return None
+            
+            # Aplica operação em todas as linhas de dados
+            ultima_linha = ws.max_row
+            if estrutura.get('tem_total', False):
+                ultima_linha -= 1  # Não modifica linha de TOTAL
+            
+            for linha in range(primeira_linha_dados, ultima_linha + 1):
+                cell = ws.cell(row=linha, column=col_idx)
+                if cell.value and isinstance(cell.value, (int, float)):
+                    if operacao == 'multiplicar':
+                        cell.value = cell.value * fator
+                    elif operacao == 'dividir':
+                        cell.value = cell.value / fator if fator != 0 else cell.value
+                    elif operacao == 'somar':
+                        cell.value = cell.value + fator
+                    elif operacao == 'subtrair':
+                        cell.value = cell.value - fator
+            
+            mensagem = f"✅ Coluna '{coluna_nome}' atualizada ({operacao} por {fator})"
+        
+        elif acao == 'substituir_valor':
+            # Busca e substitui valores
+            coluna_nome = parametros.get('coluna')
+            valores = parametros.get('valores', [])
+            
+            if not valores or len(valores) < 2:
+                return None
+            
+            valor_antigo = str(valores[0])
+            valor_novo = str(valores[1])
+            
+            substituicoes = 0
+            
+            # Se especificou coluna, busca só nela
+            if coluna_nome:
+                colunas = estrutura.get('colunas', [])
+                col_idx = None
+                
+                for idx, col in enumerate(colunas, 1):
+                    if col['nome'].lower() == coluna_nome.lower():
+                        col_idx = idx
+                        break
+                
+                if col_idx:
+                    ultima_linha = ws.max_row
+                    if estrutura.get('tem_total', False):
+                        ultima_linha -= 1
+                    
+                    for linha in range(primeira_linha_dados, ultima_linha + 1):
+                        cell = ws.cell(row=linha, column=col_idx)
+                        if cell.value and str(cell.value) == valor_antigo:
+                            cell.value = valor_novo
+                            substituicoes += 1
+            else:
+                # Busca em todas as colunas
+                ultima_linha = ws.max_row
+                if estrutura.get('tem_total', False):
+                    ultima_linha -= 1
+                
+                for linha in range(primeira_linha_dados, ultima_linha + 1):
+                    for col_idx in range(1, len(estrutura.get('colunas', [])) + 1):
+                        cell = ws.cell(row=linha, column=col_idx)
+                        if cell.value and str(cell.value) == valor_antigo:
+                            cell.value = valor_novo
+                            substituicoes += 1
+            
+            mensagem = f"✅ {substituicoes} substituição(ões) realizada(s)"
+        
+        else:
+            logger.error(f"Ação desconhecida: {acao}")
+            return None
+        
+        # Salva workbook modificado
+        output = io.BytesIO()
+        wb.save(output)
+        wb.close()
+        
+        result = output.getvalue()
+        output.close()
+        
+        logger.info(f"Edição aplicada: {acao}, {len(result)} bytes")
+        return result, mensagem
+        
+    except Exception as e:
+        logger.error(f"Erro ao aplicar edição: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return None
