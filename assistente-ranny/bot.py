@@ -1264,27 +1264,50 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
     if 'planilha_pendente' in context.user_data:
         # Verifica se é confirmação (busca O(1) com set)
         if any(palavra in text_lower for palavra in PALAVRAS_CONFIRMACAO):
-            # CONFIRMOU - Criar planilha
-            await update.message.reply_text("✅ Confirmado! Criando planilha...")
+            # CONFIRMOU - Criar AMBAS as planilhas
+            await update.message.reply_text("✅ Confirmado! Criando planilhas...")
             
             try:
                 dados_planilha = context.user_data['planilha_pendente']
+                periodo = dados_planilha.get('periodo', 'Semana')
                 
-                # Cria Excel
-                xlsx_bytes = pdf_tools.criar_xlsx_entregadores(
-                    dados_planilha,
+                # ===== VERSÃO 1: SEM NOMES (para motoboy responsável) =====
+                # Converte dados para formato compatível (números ao invés de listas)
+                dados_v1 = {
+                    'periodo': periodo,
+                    'dias': []
+                }
+                
+                for dia_info in dados_planilha['dias']:
+                    dia_v1 = dia_info.copy()
+                    # Se entregadores é lista, converte para número
+                    if isinstance(dia_v1['entregadores'], list):
+                        dia_v1['entregadores'] = len(dia_v1['entregadores'])
+                    dados_v1['dias'].append(dia_v1)
+                
+                xlsx_v1_bytes = pdf_tools.criar_xlsx_entregadores(
+                    dados_v1,
                     custo_semana=CUSTO_ENTREGADOR_SEMANA,
                     custo_fds=CUSTO_ENTREGADOR_FDS,
                     bonus_horario=BONUS_HORARIO_FDS,
                     custo_entrega=CUSTO_POR_ENTREGA
                 )
                 
-                if not xlsx_bytes:
-                    await update.message.reply_text("❌ Erro ao criar planilha Excel")
+                if not xlsx_v1_bytes:
+                    await update.message.reply_text("❌ Erro ao criar planilha Versão 1 (sem nomes)")
+                    return True
+                
+                # ===== VERSÃO 2: COM NOMES (para Ranny) =====
+                xlsx_v2_bytes = pdf_tools.criar_xlsx_entregadores_com_nomes(
+                    dados_planilha,
+                    custo_entrega=CUSTO_POR_ENTREGA
+                )
+                
+                if not xlsx_v2_bytes:
+                    await update.message.reply_text("❌ Erro ao criar planilha Versão 2 (com nomes)")
                     return True
                 
                 # Usa tópico fixo ou cria na primeira vez
-                periodo = dados_planilha.get('periodo', 'Semana')
                 topico_id = config.TOPICS.get('planilha_entregadores', 0)
                 
                 # Se não tem tópico configurado (0), cria um fixo
@@ -1303,31 +1326,48 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                         topico_id = config.TOPICS['chat']
                         await update.message.reply_text(f"⚠️ Não consegui criar tópico, enviando no Chat")
                 
-                # Envia planilha no tópico fixo
-                nome_arquivo = f"entregadores_{periodo.replace('/', '_').replace(' ', '_')}.xlsx"
+                # Envia VERSÃO 2 (com nomes) - para Ranny
+                nome_arquivo_v2 = f"entregadores_COM_NOMES_{periodo.replace('/', '_').replace(' ', '_')}.xlsx"
                 
                 await context.bot.send_document(
                     chat_id=config.GROUP_ID,
                     message_thread_id=topico_id,
-                    document=io.BytesIO(xlsx_bytes),
-                    filename=nome_arquivo,
-                    caption=f"📊 *Planilha de Entregadores*\n\n{periodo}\n\n✅ Planilha criada automaticamente pelo bot!",
+                    document=io.BytesIO(xlsx_v2_bytes),
+                    filename=nome_arquivo_v2,
+                    caption=f"📊 *Planilha COM NOMES (para você)*\n\n{periodo}\n\n✅ Versão detalhada com nomes dos entregadores!",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                # Envia VERSÃO 1 (sem nomes) - para motoboy responsável
+                nome_arquivo_v1 = f"entregadores_SEM_NOMES_{periodo.replace('/', '_').replace(' ', '_')}.xlsx"
+                
+                await context.bot.send_document(
+                    chat_id=config.GROUP_ID,
+                    message_thread_id=topico_id,
+                    document=io.BytesIO(xlsx_v1_bytes),
+                    filename=nome_arquivo_v1,
+                    caption=f"📊 *Planilha SEM NOMES (para responsável)*\n\n{periodo}\n\n✅ Versão resumida por dia!",
                     parse_mode=ParseMode.MARKDOWN
                 )
                 
                 await update.message.reply_text(
-                    f"✅ *Planilha criada com sucesso!*\n\n"
-                    f"📁 Tópico: Planilha dos Entregadores\n"
-                    f"📊 Arquivo: {nome_arquivo}\n\n"
-                    f"A planilha já está com todas as fórmulas calculadas! 🎉",
+                    f"✅ *Planilhas criadas com sucesso!*\n\n"
+                    f"📁 Tópico: Planilha dos Entregadores\n\n"
+                    f"📊 *Versão 1 (COM NOMES):*\n"
+                    f"   Para você - mostra cada entregador\n\n"
+                    f"📊 *Versão 2 (SEM NOMES):*\n"
+                    f"   Para o responsável - resumo por dia\n\n"
+                    f"Ambas já estão com todas as fórmulas calculadas! 🎉",
                     parse_mode=ParseMode.MARKDOWN
                 )
                 
                 return True
                 
             except Exception as e:
-                logger.error(f"❌ Erro ao criar planilha: {e}")
-                await update.message.reply_text(f"❌ Erro ao criar planilha: {str(e)}")
+                logger.error(f"❌ Erro ao criar planilhas: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                await update.message.reply_text(f"❌ Erro ao criar planilhas: {str(e)}")
                 return True
             finally:
                 # Sempre limpa dados pendentes
@@ -1382,12 +1422,19 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                 
                 for dia_info in dados['dias']:
                     dia = dia_info['dia']
-                    entregadores = dia_info['entregadores']
+                    entregadores_lista = dia_info['entregadores']
+                    
+                    # Compatibilidade: se for lista, pega o tamanho; se for número, usa direto
+                    if isinstance(entregadores_lista, list):
+                        num_entregadores = len(entregadores_lista)
+                    else:
+                        num_entregadores = entregadores_lista
+                    
                     chegaram_horario = dia_info['chegaram_horario']
                     entregas = dia_info['entregas']
                     
                     # Usa função auxiliar para calcular custos
-                    custos = calcular_custo_dia(dia, entregadores, chegaram_horario, entregas)
+                    custos = calcular_custo_dia(dia, num_entregadores, chegaram_horario, entregas)
                     
                     total_entregas += entregas
                     total_custo += custos['total']
@@ -1395,12 +1442,12 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     # Monta linha do resumo
                     if custos['is_fds'] and chegaram_horario > 0:
                         resumo_dias.append(
-                            f"• {dia.capitalize()}: {entregadores} entregadores, "
+                            f"• {dia.capitalize()}: {num_entregadores} entregadores, "
                             f"{chegaram_horario} no horário, {entregas} entregas = R$ {custos['total']:,.2f}"
                         )
                     else:
                         resumo_dias.append(
-                            f"• {dia.capitalize()}: {entregadores} entregadores, "
+                            f"• {dia.capitalize()}: {num_entregadores} entregadores, "
                             f"{entregas} entregas = R$ {custos['total']:,.2f}"
                         )
                 

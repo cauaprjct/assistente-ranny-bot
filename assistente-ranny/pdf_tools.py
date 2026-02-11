@@ -1695,3 +1695,355 @@ def criar_xlsx_entregadores(dados: dict, custo_semana: float = 1.0, custo_fds: f
     except Exception as e:
         logger.error(f"Erro ao criar XLSX de entregadores: {e}")
         return None
+
+
+def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = None, 
+                                      custo_entrega: float = 12.0) -> Optional[bytes]:
+    """Cria planilha Excel com nomes dos entregadores (Versão 2 - para Ranny)
+    
+    Estrutura: Linhas = Entregadores, Colunas = Dias do mês
+    
+    Args:
+        dados: Dicionário com estrutura:
+            {
+                "periodo": "Semana 10/02 a 16/02",
+                "dias": [
+                    {"dia": "segunda", "entregadores": ["João", "Pedro"], "entregas": 20},
+                    ...
+                ]
+            }
+        entregadores_fixos: Lista de nomes dos entregadores fixos (opcional)
+        custo_entrega: Custo por entrega (padrão: 12.0)
+    
+    Returns:
+        bytes do XLSX ou None se falhar
+    """
+    if not HAS_XLSX:
+        logger.error("openpyxl não instalado")
+        return None
+    
+    try:
+        from datetime import datetime
+        from calendar import monthrange
+        
+        # Lista padrão de entregadores fixos
+        if entregadores_fixos is None:
+            entregadores_fixos = [
+                "Maycon",
+                "Gustavo Campos",
+                "Jonathan Maruche",
+                "Marcos Rodrigues",
+                "Lucas da Silveira",
+                "Robert",
+                "Thiago",
+                "Lucas Vitório",
+                "Igor Sousa",
+                "Igor Paiva"
+            ]
+        
+        # Extrai todos os nomes mencionados nos dias
+        todos_nomes = set()
+        entregas_por_dia_pessoa = {}  # {dia: {nome: num_entregas}}
+        
+        dias_data = dados.get('dias', [])
+        
+        for dia_info in dias_data:
+            dia = dia_info.get('dia', '').lower()
+            nomes = dia_info.get('entregadores', [])
+            total_entregas = dia_info.get('entregas', 0)
+            
+            # Se entregadores é número, converte para lista genérica
+            if isinstance(nomes, int):
+                nomes = [f"Entregador {i+1}" for i in range(nomes)]
+            
+            todos_nomes.update(nomes)
+            
+            # Distribui entregas igualmente entre entregadores do dia
+            if nomes and total_entregas > 0:
+                entregas_por_pessoa = total_entregas // len(nomes)
+                resto = total_entregas % len(nomes)
+                
+                entregas_por_dia_pessoa[dia] = {}
+                for idx, nome in enumerate(nomes):
+                    # Primeiros recebem +1 se houver resto
+                    entregas = entregas_por_pessoa + (1 if idx < resto else 0)
+                    entregas_por_dia_pessoa[dia][nome] = entregas
+        
+        # Separa fixos e freelancers
+        fixos_normalizados = {nome.lower().strip() for nome in entregadores_fixos}
+        
+        nomes_fixos = []
+        nomes_freelancers = []
+        
+        for nome in todos_nomes:
+            nome_normalizado = nome.lower().strip()
+            # Verifica se é fixo (match parcial para variações de nome)
+            is_fixo = any(fixo in nome_normalizado or nome_normalizado in fixo 
+                         for fixo in fixos_normalizados)
+            
+            if is_fixo:
+                nomes_fixos.append(nome)
+            else:
+                nomes_freelancers.append(nome)
+        
+        # Ordena alfabeticamente
+        nomes_fixos.sort()
+        nomes_freelancers.sort()
+        
+        # Lista final: fixos + freelancers
+        lista_entregadores = nomes_fixos + nomes_freelancers
+        
+        if not lista_entregadores:
+            logger.error("Nenhum entregador encontrado nos dados")
+            return None
+        
+        # Cria workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Entregadores"
+        
+        # Estilos
+        title_font = Font(bold=True, size=14, color="FFFFFF")
+        title_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        title_align = Alignment(horizontal="center", vertical="center")
+        
+        header_font = Font(bold=True, size=10, color="000000")
+        header_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        data_align = Alignment(horizontal="center", vertical="center")
+        
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Determina mês/ano do período
+        periodo = dados.get('periodo', '')
+        try:
+            # Tenta extrair data do período (ex: "Semana 10/02 a 16/02")
+            import re
+            match = re.search(r'(\d{1,2})/(\d{1,2})', periodo)
+            if match:
+                dia = int(match.group(1))
+                mes = int(match.group(2))
+                ano = datetime.now().year
+                
+                # Ajusta ano se necessário (se mês é futuro, pode ser ano passado)
+                if mes > datetime.now().month:
+                    ano -= 1
+            else:
+                # Usa mês/ano atual
+                mes = datetime.now().month
+                ano = datetime.now().year
+        except:
+            mes = datetime.now().month
+            ano = datetime.now().year
+        
+        # Nomes dos meses
+        meses = ['', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
+                'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO']
+        nome_mes = meses[mes]
+        
+        # Dias do mês
+        _, num_dias = monthrange(ano, mes)
+        
+        # Mapeamento dia da semana
+        dias_semana = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo']
+        dias_semana_curto = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
+        
+        # Linha 1: Título do mês
+        ws.merge_cells('A1:E1')
+        title_cell = ws['A1']
+        title_cell.value = f"MÊS {nome_mes}"
+        title_cell.font = title_font
+        title_cell.fill = title_fill
+        title_cell.alignment = title_align
+        title_cell.border = thin_border
+        ws.row_dimensions[1].height = 25
+        
+        # Linha 2: Cabeçalho "NOMES" + dias do mês
+        col_num = 1
+        
+        # Coluna A: "NOMES"
+        cell = ws.cell(row=2, column=col_num, value="NOMES")
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+        ws.column_dimensions['A'].width = 20
+        col_num += 1
+        
+        # Colunas B+: Dias do mês (01, 02, 03, ...)
+        for dia in range(1, num_dias + 1):
+            cell = ws.cell(row=2, column=col_num, value=dia)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+            ws.column_dimensions[get_column_letter(col_num)].width = 5
+            col_num += 1
+        
+        # Últimas colunas: TOTAL, ENTREGAS, VALOR, R$ MOTO
+        for header in ["TOTAL", "ENTREGAS", "VALOR", "R$ MOTO"]:
+            cell = ws.cell(row=2, column=col_num, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+            ws.column_dimensions[get_column_letter(col_num)].width = 12
+            col_num += 1
+        
+        ws.row_dimensions[2].height = 20
+        
+        # Linha 3: Dias da semana (seg, ter, qua, ...)
+        col_num = 2  # Começa depois de "NOMES"
+        
+        for dia in range(1, num_dias + 1):
+            data_dia = datetime(ano, mes, dia)
+            dia_semana_idx = data_dia.weekday()  # 0=segunda, 6=domingo
+            dia_semana_nome = dias_semana_curto[dia_semana_idx]
+            
+            cell = ws.cell(row=3, column=col_num, value=dia_semana_nome)
+            cell.font = Font(size=8)
+            cell.alignment = data_align
+            cell.border = thin_border
+            col_num += 1
+        
+        ws.row_dimensions[3].height = 15
+        
+        # Linhas 4+: Dados dos entregadores
+        row_num = 4
+        alt_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+        
+        for idx, nome in enumerate(lista_entregadores):
+            # Coluna A: Nome do entregador
+            cell = ws.cell(row=row_num, column=1, value=nome)
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+            cell.border = thin_border
+            if idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            # Colunas dos dias: preenche com número de entregas
+            col_num = 2
+            for dia in range(1, num_dias + 1):
+                # Verifica se esse entregador trabalhou nesse dia
+                # Mapeia número do dia para nome do dia da semana
+                data_dia = datetime(ano, mes, dia)
+                dia_semana_idx = data_dia.weekday()
+                dia_semana_nome = dias_semana[dia_semana_idx]
+                
+                # Busca entregas desse dia/pessoa
+                entregas = 0
+                if dia_semana_nome in entregas_por_dia_pessoa:
+                    entregas = entregas_por_dia_pessoa[dia_semana_nome].get(nome, 0)
+                
+                cell = ws.cell(row=row_num, column=col_num, value=entregas if entregas > 0 else "")
+                cell.alignment = data_align
+                cell.border = thin_border
+                if idx % 2 == 1:
+                    cell.fill = alt_fill
+                
+                col_num += 1
+            
+            # Coluna TOTAL: soma dos dias
+            primeira_col_dia = get_column_letter(2)
+            ultima_col_dia = get_column_letter(num_dias + 1)
+            formula = f"=SUM({primeira_col_dia}{row_num}:{ultima_col_dia}{row_num})"
+            cell = ws.cell(row=row_num, column=col_num, value=formula)
+            cell.alignment = data_align
+            cell.border = thin_border
+            cell.font = Font(bold=True)
+            if idx % 2 == 1:
+                cell.fill = alt_fill
+            col_num += 1
+            
+            # Coluna ENTREGAS: igual ao TOTAL
+            col_total = get_column_letter(col_num - 1)
+            formula = f"={col_total}{row_num}"
+            cell = ws.cell(row=row_num, column=col_num, value=formula)
+            cell.alignment = data_align
+            cell.border = thin_border
+            if idx % 2 == 1:
+                cell.fill = alt_fill
+            col_num += 1
+            
+            # Coluna VALOR: ENTREGAS * custo_entrega
+            col_entregas = get_column_letter(col_num - 1)
+            formula = f"={col_entregas}{row_num}*{custo_entrega}"
+            cell = ws.cell(row=row_num, column=col_num, value=formula)
+            cell.number_format = 'R$ #,##0.00'
+            cell.alignment = data_align
+            cell.border = thin_border
+            if idx % 2 == 1:
+                cell.fill = alt_fill
+            col_num += 1
+            
+            # Coluna R$ MOTO: deixa vazio (será preenchido manualmente)
+            cell = ws.cell(row=row_num, column=col_num, value="")
+            cell.alignment = data_align
+            cell.border = thin_border
+            if idx % 2 == 1:
+                cell.fill = alt_fill
+            
+            row_num += 1
+        
+        # Linha TOTAL (soma de todos os entregadores)
+        total_row = row_num
+        total_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        total_font = Font(bold=True, size=11)
+        
+        # Coluna A: "TOTAL"
+        cell = ws.cell(row=total_row, column=1, value="TOTAL")
+        cell.font = total_font
+        cell.fill = total_fill
+        cell.alignment = data_align
+        cell.border = thin_border
+        
+        # Colunas dos dias: soma
+        col_num = 2
+        for dia in range(1, num_dias + 1):
+            col_letter = get_column_letter(col_num)
+            formula = f"=SUM({col_letter}4:{col_letter}{total_row-1})"
+            cell = ws.cell(row=total_row, column=col_num, value=formula)
+            cell.font = total_font
+            cell.fill = total_fill
+            cell.alignment = data_align
+            cell.border = thin_border
+            col_num += 1
+        
+        # Colunas finais: somas
+        for _ in range(4):  # TOTAL, ENTREGAS, VALOR, R$ MOTO
+            col_letter = get_column_letter(col_num)
+            formula = f"=SUM({col_letter}4:{col_letter}{total_row-1})"
+            cell = ws.cell(row=total_row, column=col_num, value=formula)
+            
+            # Formato moeda para VALOR e R$ MOTO
+            if col_num >= num_dias + 4:
+                cell.number_format = 'R$ #,##0.00'
+            
+            cell.font = total_font
+            cell.fill = total_fill
+            cell.alignment = data_align
+            cell.border = thin_border
+            col_num += 1
+        
+        ws.row_dimensions[total_row].height = 20
+        
+        # Salva em bytes
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        
+        result = buffer.getvalue()
+        buffer.close()
+        
+        logger.info(f"XLSX de entregadores com nomes criado: {len(result)} bytes, {len(lista_entregadores)} entregadores")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Erro ao criar XLSX de entregadores com nomes: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None

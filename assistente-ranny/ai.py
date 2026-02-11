@@ -473,7 +473,12 @@ async def extrair_dados_entregadores(texto: str) -> dict:
             "dados": {
                 "periodo": "Semana 10/02 a 16/02",
                 "dias": [
-                    {"dia": "segunda", "entregadores": 3, "chegaram_horario": 0, "entregas": 20},
+                    {
+                        "dia": "segunda", 
+                        "entregadores": ["João", "Pedro", "Maria"], 
+                        "chegaram_horario": 0, 
+                        "entregas": 20
+                    },
                     ...
                 ]
             },
@@ -506,15 +511,20 @@ FORMATO DO JSON:
 {{
   "periodo": "Semana DD/MM a DD/MM",
   "dias": [
-    {{"dia": "segunda", "entregadores": 3, "chegaram_horario": 0, "entregas": 20}},
-    {{"dia": "terca", "entregadores": 3, "chegaram_horario": 0, "entregas": 18}},
-    {{"dia": "quarta", "entregadores": 3, "chegaram_horario": 0, "entregas": 22}},
-    {{"dia": "quinta", "entregadores": 3, "chegaram_horario": 0, "entregas": 19}},
-    {{"dia": "sexta", "entregadores": 4, "chegaram_horario": 3, "entregas": 30}},
-    {{"dia": "sabado", "entregadores": 4, "chegaram_horario": 4, "entregas": 35}},
-    {{"dia": "domingo", "entregadores": 4, "chegaram_horario": 3, "entregas": 28}}
+    {{"dia": "segunda", "entregadores": ["João Silva", "Pedro Santos", "Maria Costa"], "chegaram_horario": 0, "entregas": 20}},
+    {{"dia": "terca", "entregadores": ["João Silva", "Pedro Santos", "Maria Costa"], "chegaram_horario": 0, "entregas": 18}},
+    {{"dia": "quarta", "entregadores": ["João Silva", "Pedro Santos", "Maria Costa"], "chegaram_horario": 0, "entregas": 22}},
+    {{"dia": "quinta", "entregadores": ["João Silva", "Pedro Santos", "Maria Costa"], "chegaram_horario": 0, "entregas": 19}},
+    {{"dia": "sexta", "entregadores": ["João Silva", "Pedro Santos", "Maria Costa", "Lucas Oliveira"], "chegaram_horario": 3, "entregas": 30}},
+    {{"dia": "sabado", "entregadores": ["João Silva", "Pedro Santos", "Maria Costa", "Lucas Oliveira"], "chegaram_horario": 4, "entregas": 35}},
+    {{"dia": "domingo", "entregadores": ["João Silva", "Pedro Santos", "Maria Costa", "Lucas Oliveira"], "chegaram_horario": 3, "entregas": 28}}
   ]
 }}
+
+IMPORTANTE SOBRE NOMES:
+- "entregadores" deve ser uma LISTA com os NOMES dos entregadores que trabalharam naquele dia
+- Se a Ranny não mencionar nomes específicos, use nomes genéricos como ["Entregador 1", "Entregador 2", etc]
+- O número de nomes na lista deve corresponder à quantidade de entregadores do dia
 
 TEXTO DA RANNY:
 {texto}
@@ -557,6 +567,16 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
                 return {
                     "sucesso": False,
                     "erro": f"Dia {dia.get('dia', '?')} com dados incompletos"
+                }
+            
+            # Converte entregadores para lista se for número (compatibilidade)
+            if isinstance(dia['entregadores'], int):
+                num_entregadores = dia['entregadores']
+                dia['entregadores'] = [f"Entregador {i+1}" for i in range(num_entregadores)]
+            elif not isinstance(dia['entregadores'], list):
+                return {
+                    "sucesso": False,
+                    "erro": f"Dia {dia.get('dia', '?')}: 'entregadores' deve ser lista ou número"
                 }
         
         # Gera período se não tiver ou se for placeholder
