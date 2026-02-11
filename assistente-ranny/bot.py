@@ -49,6 +49,10 @@ for noisy in ['httpx', 'httpcore', 'telegram', 'telegram.ext', 'apscheduler']:
 # Armazena resultados de busca para reenvio com "manda o 1"
 user_search_results = {}
 
+# ============ CACHE DE TÓPICOS ============
+# Armazena IDs de tópicos criados dinamicamente para reutilização
+cached_topic_ids = {}
+
 # ============ CONSTANTES DE NEGÓCIO ============
 # Custos de entregadores
 CUSTO_ENTREGADOR_SEMANA = 1.00  # Segunda a quinta
@@ -113,6 +117,27 @@ def calcular_custo_dia(dia: str, entregadores: int, chegaram_horario: int, entre
         'total': total,
         'is_fds': is_fds
     }
+async def buscar_topico_por_nome(context: ContextTypes.DEFAULT_TYPE, nome_topico: str) -> int:
+    """
+    Busca um tópico existente no grupo pelo nome.
+    Retorna o message_thread_id se encontrado, ou 0 se não encontrado.
+    """
+    try:
+        # Tenta obter informações do fórum
+        chat = await context.bot.get_chat(config.GROUP_ID)
+
+        # Infelizmente, a API do Telegram não tem um método direto para listar todos os tópicos
+        # Então vamos tentar uma abordagem alternativa: enviar uma mensagem de teste e deletar
+        # Mas isso não é ideal. A melhor solução é cachear os IDs após a primeira criação.
+
+        # Por enquanto, retornamos 0 para indicar que não encontramos
+        # O bot criará o tópico e logará o ID para adicionar ao .env
+        return 0
+
+    except Exception as e:
+        logger.error(f"❌ Erro ao buscar tópico '{nome_topico}': {e}")
+        return 0
+
 
 
 # ============ HANDLERS ============
@@ -1310,40 +1335,56 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                 # ===== TÓPICO PARA VERSÃO COM NOMES =====
                 topico_com_nomes = config.TOPICS.get('planilha_entregadores_com_nomes', 0)
                 
-                # Se não tem tópico configurado (0), cria um fixo
+                # Se não tem tópico configurado (0), verifica cache ou cria um fixo
                 if not topico_com_nomes or topico_com_nomes == 0:
-                    try:
-                        result = await context.bot.create_forum_topic(
-                            chat_id=config.GROUP_ID,
-                            name="📊 Planilhas COM NOMES (Ranny)"
-                        )
-                        topico_com_nomes = result.message_thread_id
-                        logger.info(f"✅ Tópico criado: Planilhas COM NOMES (ID: {topico_com_nomes})")
-                        logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES_COM_NOMES={topico_com_nomes}")
-                    except Exception as e:
-                        logger.error(f"❌ Erro ao criar tópico COM NOMES: {e}")
-                        # Se falhar, envia no tópico Chat
-                        topico_com_nomes = config.TOPICS['chat']
-                        await update.message.reply_text(f"⚠️ Não consegui criar tópico COM NOMES, enviando no Chat")
+                    # Verifica se já criamos este tópico antes (cache em memória)
+                    if 'planilha_entregadores_com_nomes' in cached_topic_ids:
+                        topico_com_nomes = cached_topic_ids['planilha_entregadores_com_nomes']
+                        logger.info(f"♻️ Reutilizando tópico COM NOMES do cache (ID: {topico_com_nomes})")
+                    else:
+                        # Cria novo tópico apenas se não existe no cache
+                        try:
+                            result = await context.bot.create_forum_topic(
+                                chat_id=config.GROUP_ID,
+                                name="📊 Planilhas COM NOMES (Ranny)"
+                            )
+                            topico_com_nomes = result.message_thread_id
+                            # Salva no cache para próximas execuções
+                            cached_topic_ids['planilha_entregadores_com_nomes'] = topico_com_nomes
+                            logger.info(f"✅ Tópico criado: Planilhas COM NOMES (ID: {topico_com_nomes})")
+                            logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES_COM_NOMES={topico_com_nomes}")
+                        except Exception as e:
+                            logger.error(f"❌ Erro ao criar tópico COM NOMES: {e}")
+                            # Se falhar, envia no tópico Chat
+                            topico_com_nomes = config.TOPICS['chat']
+                            await update.message.reply_text(f"⚠️ Não consegui criar tópico COM NOMES, enviando no Chat")
                 
                 # ===== TÓPICO PARA VERSÃO SEM NOMES =====
                 topico_sem_nomes = config.TOPICS.get('planilha_entregadores_sem_nomes', 0)
                 
-                # Se não tem tópico configurado (0), cria um fixo
+                # Se não tem tópico configurado (0), verifica cache ou cria um fixo
                 if not topico_sem_nomes or topico_sem_nomes == 0:
-                    try:
-                        result = await context.bot.create_forum_topic(
-                            chat_id=config.GROUP_ID,
-                            name="📊 Planilhas SEM NOMES (Responsável)"
-                        )
-                        topico_sem_nomes = result.message_thread_id
-                        logger.info(f"✅ Tópico criado: Planilhas SEM NOMES (ID: {topico_sem_nomes})")
-                        logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES_SEM_NOMES={topico_sem_nomes}")
-                    except Exception as e:
-                        logger.error(f"❌ Erro ao criar tópico SEM NOMES: {e}")
-                        # Se falhar, envia no tópico Chat
-                        topico_sem_nomes = config.TOPICS['chat']
-                        await update.message.reply_text(f"⚠️ Não consegui criar tópico SEM NOMES, enviando no Chat")
+                    # Verifica se já criamos este tópico antes (cache em memória)
+                    if 'planilha_entregadores_sem_nomes' in cached_topic_ids:
+                        topico_sem_nomes = cached_topic_ids['planilha_entregadores_sem_nomes']
+                        logger.info(f"♻️ Reutilizando tópico SEM NOMES do cache (ID: {topico_sem_nomes})")
+                    else:
+                        # Cria novo tópico apenas se não existe no cache
+                        try:
+                            result = await context.bot.create_forum_topic(
+                                chat_id=config.GROUP_ID,
+                                name="📊 Planilhas SEM NOMES (Responsável)"
+                            )
+                            topico_sem_nomes = result.message_thread_id
+                            # Salva no cache para próximas execuções
+                            cached_topic_ids['planilha_entregadores_sem_nomes'] = topico_sem_nomes
+                            logger.info(f"✅ Tópico criado: Planilhas SEM NOMES (ID: {topico_sem_nomes})")
+                            logger.info(f"💡 Adicione no .env: TOPIC_PLANILHA_ENTREGADORES_SEM_NOMES={topico_sem_nomes}")
+                        except Exception as e:
+                            logger.error(f"❌ Erro ao criar tópico SEM NOMES: {e}")
+                            # Se falhar, envia no tópico Chat
+                            topico_sem_nomes = config.TOPICS['chat']
+                            await update.message.reply_text(f"⚠️ Não consegui criar tópico SEM NOMES, enviando no Chat")
                 
                 # Envia VERSÃO 2 (com nomes) - para Ranny
                 nome_arquivo_v2 = f"entregadores_COM_NOMES_{periodo.replace('/', '_').replace(' ', '_')}.xlsx"
