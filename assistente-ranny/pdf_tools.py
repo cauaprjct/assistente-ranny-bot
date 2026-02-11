@@ -1701,7 +1701,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
                                       custo_entrega: float = 12.0) -> Optional[bytes]:
     """Cria planilha Excel com nomes dos entregadores (Versão 2 - para Ranny)
     
-    Estrutura: Linhas = Entregadores, Colunas = Dias do mês
+    Estrutura: Linhas = Entregadores, Colunas = Dias da SEMANA informada
     
     Args:
         dados: Dicionário com estrutura:
@@ -1724,7 +1724,6 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
     
     try:
         from datetime import datetime
-        from calendar import monthrange
         
         # Lista padrão de entregadores fixos
         if entregadores_fixos is None:
@@ -1747,6 +1746,23 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
         dias_data = dados.get('dias', [])
         
+        # Mapeamento de dias da semana
+        dias_semana_map = {
+            'segunda': 'Segunda',
+            'terca': 'Terça',
+            'terça': 'Terça',
+            'quarta': 'Quarta',
+            'quinta': 'Quinta',
+            'sexta': 'Sexta',
+            'sabado': 'Sábado',
+            'sábado': 'Sábado',
+            'domingo': 'Domingo'
+        }
+        
+        # Lista ordenada de dias da semana
+        ordem_dias = ['segunda', 'terca', 'terça', 'quarta', 'quinta', 'sexta', 'sabado', 'sábado', 'domingo']
+        dias_presentes = []
+        
         for dia_info in dias_data:
             dia = dia_info.get('dia', '').lower()
             nomes = dia_info.get('entregadores', [])
@@ -1758,6 +1774,10 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             
             todos_nomes.update(nomes)
             
+            # Adiciona dia à lista de dias presentes
+            if dia not in dias_presentes:
+                dias_presentes.append(dia)
+            
             # Distribui entregas igualmente entre entregadores do dia
             if nomes and total_entregas > 0:
                 entregas_por_pessoa = total_entregas // len(nomes)
@@ -1768,6 +1788,16 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
                     # Primeiros recebem +1 se houver resto
                     entregas = entregas_por_pessoa + (1 if idx < resto else 0)
                     entregas_por_dia_pessoa[dia][nome] = entregas
+        
+        # Ordena dias presentes pela ordem da semana
+        dias_ordenados = []
+        for dia_ordem in ordem_dias:
+            if dia_ordem in dias_presentes:
+                dias_ordenados.append(dia_ordem)
+        
+        if not dias_ordenados:
+            logger.error("Nenhum dia encontrado nos dados")
+            return None
         
         # Separa fixos e freelancers
         fixos_normalizados = {nome.lower().strip() for nome in entregadores_fixos}
@@ -1820,51 +1850,21 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             bottom=Side(style='thin')
         )
         
-        # Determina mês/ano do período
-        periodo = dados.get('periodo', '')
-        try:
-            # Tenta extrair data do período (ex: "Semana 10/02 a 16/02")
-            import re
-            match = re.search(r'(\d{1,2})/(\d{1,2})', periodo)
-            if match:
-                dia = int(match.group(1))
-                mes = int(match.group(2))
-                ano = datetime.now().year
-                
-                # Ajusta ano se necessário (se mês é futuro, pode ser ano passado)
-                if mes > datetime.now().month:
-                    ano -= 1
-            else:
-                # Usa mês/ano atual
-                mes = datetime.now().month
-                ano = datetime.now().year
-        except:
-            mes = datetime.now().month
-            ano = datetime.now().year
+        # Extrai período
+        periodo = dados.get('periodo', 'Semana')
         
-        # Nomes dos meses
-        meses = ['', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
-                'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO']
-        nome_mes = meses[mes]
-        
-        # Dias do mês
-        _, num_dias = monthrange(ano, mes)
-        
-        # Mapeamento dia da semana
-        dias_semana = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo']
-        dias_semana_curto = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom']
-        
-        # Linha 1: Título do mês
-        ws.merge_cells('A1:E1')
+        # Linha 1: Título
+        num_colunas = 1 + len(dias_ordenados) + 4  # NOMES + dias + TOTAL + ENTREGAS + VALOR + R$ MOTO
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_colunas)
         title_cell = ws['A1']
-        title_cell.value = f"MÊS {nome_mes}"
+        title_cell.value = f"📊 ENTREGADORES - {periodo.upper()}"
         title_cell.font = title_font
         title_cell.fill = title_fill
         title_cell.alignment = title_align
         title_cell.border = thin_border
         ws.row_dimensions[1].height = 25
         
-        # Linha 2: Cabeçalho "NOMES" + dias do mês
+        # Linha 2: Cabeçalho "NOMES" + dias da semana
         col_num = 1
         
         # Coluna A: "NOMES"
@@ -1876,14 +1876,15 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         ws.column_dimensions['A'].width = 20
         col_num += 1
         
-        # Colunas B+: Dias do mês (01, 02, 03, ...)
-        for dia in range(1, num_dias + 1):
-            cell = ws.cell(row=2, column=col_num, value=dia)
+        # Colunas dos dias da semana
+        for dia in dias_ordenados:
+            dia_nome = dias_semana_map.get(dia, dia.capitalize())
+            cell = ws.cell(row=2, column=col_num, value=dia_nome)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_align
             cell.border = thin_border
-            ws.column_dimensions[get_column_letter(col_num)].width = 5
+            ws.column_dimensions[get_column_letter(col_num)].width = 12
             col_num += 1
         
         # Últimas colunas: TOTAL, ENTREGAS, VALOR, R$ MOTO
@@ -1898,24 +1899,8 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
         ws.row_dimensions[2].height = 20
         
-        # Linha 3: Dias da semana (seg, ter, qua, ...)
-        col_num = 2  # Começa depois de "NOMES"
-        
-        for dia in range(1, num_dias + 1):
-            data_dia = datetime(ano, mes, dia)
-            dia_semana_idx = data_dia.weekday()  # 0=segunda, 6=domingo
-            dia_semana_nome = dias_semana_curto[dia_semana_idx]
-            
-            cell = ws.cell(row=3, column=col_num, value=dia_semana_nome)
-            cell.font = Font(size=8)
-            cell.alignment = data_align
-            cell.border = thin_border
-            col_num += 1
-        
-        ws.row_dimensions[3].height = 15
-        
-        # Linhas 4+: Dados dos entregadores
-        row_num = 4
+        # Linhas 3+: Dados dos entregadores
+        row_num = 3
         alt_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
         
         for idx, nome in enumerate(lista_entregadores):
@@ -1928,17 +1913,11 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             
             # Colunas dos dias: preenche com número de entregas
             col_num = 2
-            for dia in range(1, num_dias + 1):
-                # Verifica se esse entregador trabalhou nesse dia
-                # Mapeia número do dia para nome do dia da semana
-                data_dia = datetime(ano, mes, dia)
-                dia_semana_idx = data_dia.weekday()
-                dia_semana_nome = dias_semana[dia_semana_idx]
-                
+            for dia in dias_ordenados:
                 # Busca entregas desse dia/pessoa
                 entregas = 0
-                if dia_semana_nome in entregas_por_dia_pessoa:
-                    entregas = entregas_por_dia_pessoa[dia_semana_nome].get(nome, 0)
+                if dia in entregas_por_dia_pessoa:
+                    entregas = entregas_por_dia_pessoa[dia].get(nome, 0)
                 
                 cell = ws.cell(row=row_num, column=col_num, value=entregas if entregas > 0 else "")
                 cell.alignment = data_align
@@ -1950,7 +1929,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             
             # Coluna TOTAL: soma dos dias
             primeira_col_dia = get_column_letter(2)
-            ultima_col_dia = get_column_letter(num_dias + 1)
+            ultima_col_dia = get_column_letter(1 + len(dias_ordenados))
             formula = f"=SUM({primeira_col_dia}{row_num}:{ultima_col_dia}{row_num})"
             cell = ws.cell(row=row_num, column=col_num, value=formula)
             cell.alignment = data_align
@@ -2004,9 +1983,9 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         
         # Colunas dos dias: soma
         col_num = 2
-        for dia in range(1, num_dias + 1):
+        for _ in dias_ordenados:
             col_letter = get_column_letter(col_num)
-            formula = f"=SUM({col_letter}4:{col_letter}{total_row-1})"
+            formula = f"=SUM({col_letter}3:{col_letter}{total_row-1})"
             cell = ws.cell(row=total_row, column=col_num, value=formula)
             cell.font = total_font
             cell.fill = total_fill
@@ -2017,11 +1996,11 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         # Colunas finais: somas
         for _ in range(4):  # TOTAL, ENTREGAS, VALOR, R$ MOTO
             col_letter = get_column_letter(col_num)
-            formula = f"=SUM({col_letter}4:{col_letter}{total_row-1})"
+            formula = f"=SUM({col_letter}3:{col_letter}{total_row-1})"
             cell = ws.cell(row=total_row, column=col_num, value=formula)
             
             # Formato moeda para VALOR e R$ MOTO
-            if col_num >= num_dias + 4:
+            if col_num >= len(dias_ordenados) + 4:
                 cell.number_format = 'R$ #,##0.00'
             
             cell.font = total_font
@@ -2039,7 +2018,7 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         result = buffer.getvalue()
         buffer.close()
         
-        logger.info(f"XLSX de entregadores com nomes criado: {len(result)} bytes, {len(lista_entregadores)} entregadores")
+        logger.info(f"XLSX de entregadores com nomes criado: {len(result)} bytes, {len(lista_entregadores)} entregadores, {len(dias_ordenados)} dias")
         return result
         
     except Exception as e:
