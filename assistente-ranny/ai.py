@@ -766,9 +766,14 @@ REGRAS:
 
 3. tem_total = true se houver colunas numéricas/moeda que devem ser somadas
 
-4. dados_exemplo: crie 1 linha de exemplo com valores realistas
+4. dados_exemplo: 
+   - Se a descrição incluir dados específicos, extraia TODAS as linhas fornecidas
+   - Identifique múltiplas linhas mesmo sem quebras de linha (ex: "05/01, A, 100Ativo10/01, B, 200Pendente" = 2 linhas)
+   - Se não houver dados específicos, crie 2-3 linhas de exemplo com valores realistas
 
-5. Se a descrição incluir dados específicos, use-os ao invés de exemplos
+5. EXEMPLO DE MÚLTIPLAS LINHAS:
+   Descrição: "Colunas: Data, Produto, Valor, Status05/01, Produto A, 100.00, Ativo10/01, Produto B, 200.00, Pendente"
+   Resultado: "dados_exemplo": [["05/01", "Produto A", 100.00, "Ativo"], ["10/01", "Produto B", 200.00, "Pendente"]]
 
 RETORNE APENAS O JSON:"""
 
