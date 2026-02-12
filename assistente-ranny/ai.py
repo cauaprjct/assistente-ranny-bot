@@ -732,22 +732,30 @@ Analise a descrição abaixo e extraia a estrutura da planilha desejada.
 DESCRIÇÃO:
 {descricao}
 
-RETORNE APENAS UM JSON VÁLIDO (sem ```json, sem explicações) com esta estrutura:
+RETORNE APENAS UM JSON VÁLIDO (sem ```json, sem explicações, sem comentários) com esta estrutura:
 {{
   "titulo": "Nome descritivo da planilha",
   "colunas": [
     {{
       "nome": "Nome da Coluna",
-      "tipo": "texto|numero|moeda|data|porcentagem",
+      "tipo": "texto",
       "largura": 15
     }}
   ],
   "dados_exemplo": [
-    ["exemplo1", "exemplo2", ...]
+    ["exemplo1", "exemplo2"]
   ],
   "tem_total": true,
-  "colunas_total": ["Nome das colunas que devem ter linha de total"]
+  "colunas_total": ["Nome das colunas"]
 }}
+
+IMPORTANTE:
+- Use APENAS aspas duplas ("), nunca aspas simples (')
+- NÃO inclua comentários no JSON (nada com //)
+- NÃO adicione vírgulas após o último item de arrays ou objetos
+- Valores booleanos: true ou false (minúsculas, sem aspas)
+- Valores numéricos: sem aspas (ex: 15, não "15")
+- Valores de texto: sempre entre aspas duplas
 
 REGRAS:
 1. Identifique o tipo correto de cada coluna:
@@ -775,6 +783,22 @@ REGRAS:
    Descrição: "Colunas: Data, Produto, Valor, Status05/01, Produto A, 100.00, Ativo10/01, Produto B, 200.00, Pendente"
    Resultado: "dados_exemplo": [["05/01", "Produto A", 100.00, "Ativo"], ["10/01", "Produto B", 200.00, "Pendente"]]
 
+EXEMPLO DE JSON VÁLIDO:
+{{
+  "titulo": "Controle de Vendas",
+  "colunas": [
+    {{"nome": "Data", "tipo": "data", "largura": 12}},
+    {{"nome": "Produto", "tipo": "texto", "largura": 20}},
+    {{"nome": "Valor", "tipo": "moeda", "largura": 12}}
+  ],
+  "dados_exemplo": [
+    ["01/02/2026", "Produto A", 150.50],
+    ["02/02/2026", "Produto B", 200.00]
+  ],
+  "tem_total": true,
+  "colunas_total": ["Valor"]
+}}
+
 RETORNE APENAS O JSON:"""
 
         model_planilha = genai.GenerativeModel('gemini-2.5-flash')
@@ -797,8 +821,20 @@ RETORNE APENAS O JSON:"""
         resposta_texto = response.text.strip()
         resposta_texto = resposta_texto.replace('```json', '').replace('```', '').strip()
         
+        # Remove possíveis comentários no JSON (// ...)
+        import re
+        resposta_texto = re.sub(r'//.*', '', resposta_texto)
+        
         # Parse JSON
-        estrutura = json.loads(resposta_texto)
+        try:
+            estrutura = json.loads(resposta_texto)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON inválido retornado pela IA: {resposta_texto[:200]}")
+            logger.error(f"Erro de parse: {e}")
+            return {
+                "sucesso": False,
+                "erro": f"IA retornou JSON inválido: {str(e)}"
+            }
         
         # Valida estrutura básica
         if 'colunas' not in estrutura or not isinstance(estrutura['colunas'], list):
