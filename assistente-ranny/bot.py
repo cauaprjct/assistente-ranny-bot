@@ -7,6 +7,7 @@ import os
 import sys
 import asyncio
 import logging
+import html
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, InputFile
@@ -1642,8 +1643,14 @@ async def handle_criar_planilha_personalizada(update: Update, context: ContextTy
                 texto_original = context.user_data.get('texto_solicitacao_planilha', '')
                 eh_pessoal = is_planilha_pessoal(texto_original, titulo)
                 
-                # Prepara caption
-                caption = f"📊 *{titulo}*\n\n✅ Planilha criada com sucesso!\n\n💾 Salva no contexto por 2 horas\n💡 Você pode adicionar dados dizendo: 'Adiciona: valor1, valor2, ...'"
+                # Prepara caption (usa HTML para evitar erros de parse)
+                titulo_safe = html.escape(titulo)
+                caption = (
+                    f"📊 <b>{titulo_safe}</b>\n\n"
+                    f"✅ Planilha criada com sucesso!\n\n"
+                    f"💾 Salva no contexto por 2 horas\n"
+                    f"💡 Você pode adicionar dados dizendo: \"Adiciona: valor1, valor2, ...\""
+                )
                 
                 if eh_pessoal:
                     # Planilha PESSOAL - envia no tópico Pessoal
@@ -1656,16 +1663,16 @@ async def handle_criar_planilha_personalizada(update: Update, context: ContextTy
                             message_thread_id=topico_pessoal,
                             document=io.BytesIO(xlsx_bytes),
                             filename=nome_arquivo,
-                            caption=f"{caption}\n\n📁 *Salvo no tópico: Pessoal*",
-                            parse_mode=ParseMode.MARKDOWN
+                            caption=f"{caption}\n\n📁 <b>Salvo no tópico: Pessoal</b>",
+                            parse_mode=ParseMode.HTML
                         )
                         
                         # Confirma no chat onde foi solicitado
                         await update.message.reply_text(
                             f"✅ Planilha pessoal criada!\n\n"
-                            f"📁 Enviada para o tópico *Pessoal*\n"
-                            f"📊 Arquivo: {nome_arquivo}",
-                            parse_mode=ParseMode.MARKDOWN
+                            f"📁 Enviada para o tópico <b>Pessoal</b>\n"
+                            f"📊 Arquivo: {html.escape(nome_arquivo)}",
+                            parse_mode=ParseMode.HTML
                         )
                         
                         logger.info(f"✅ Planilha PESSOAL enviada para tópico Pessoal: {nome_arquivo}")
@@ -1675,7 +1682,7 @@ async def handle_criar_planilha_personalizada(update: Update, context: ContextTy
                             document=io.BytesIO(xlsx_bytes),
                             filename=nome_arquivo,
                             caption=caption,
-                            parse_mode=ParseMode.MARKDOWN
+                            parse_mode=ParseMode.HTML
                         )
                         logger.warning(f"⚠️ Tópico Pessoal não configurado, enviando no mesmo tópico")
                 else:
@@ -1684,7 +1691,7 @@ async def handle_criar_planilha_personalizada(update: Update, context: ContextTy
                         document=io.BytesIO(xlsx_bytes),
                         filename=nome_arquivo,
                         caption=caption,
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                     logger.info(f"✅ Planilha criada e enviada no mesmo tópico: {nome_arquivo}")
                 
