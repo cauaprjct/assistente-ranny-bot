@@ -66,8 +66,34 @@ DIAS_FDS = {'sexta', 'sabado', 'sábado', 'domingo'}
 # Palavras-chave para detecção (convertidas para set para busca O(1))
 PALAVRAS_CONFIRMACAO = {'sim', 'confirma', 'confirmo', 'ok', 'correto', 'certo', 'isso', 'exato'}
 PALAVRAS_NEGACAO = {'não', 'nao', 'errado', 'cancela'}
-PALAVRAS_CHAVE_PLANILHA = {'planilha', 'entregador', 'entregadores', 'semana', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'sabado', 'domingo'}
+PALAVRAS_CHAVE_PLANILHA = {
+    'planilha', 'entregador', 'entregadores', 
+    'semana', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'sabado', 'domingo',
+    'mês', 'mes', 'mensal', 'janeiro', 'fevereiro', 'março', 'marco', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+    'quinzena', 'periodo', 'período'
+}
 VERBOS_CRIACAO = {'cria', 'criar', 'faz', 'fazer', 'gera', 'gerar', 'monta', 'montar'}
+PALAVRAS_PERIODO_MENSAL = {'mês', 'mes', 'mensal', 'janeiro', 'fevereiro', 'março', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro', 'quinzena'}
+
+# Palavras-chave para edição de planilhas
+PALAVRAS_ADICIONAR = {'adiciona', 'adicionar', 'insere', 'inserir', 'coloca', 'põe', 'poe'}
+PALAVRAS_EDITAR = {'muda', 'mudar', 'altera', 'alterar', 'corrige', 'corrigir', 'edita', 'editar', 'atualiza', 'atualizar'}
+PALAVRAS_REMOVER = {'remove', 'remover', 'apaga', 'apagar', 'deleta', 'deletar', 'exclui', 'excluir'}
+
+# Palavras-chave para detectar planilhas pessoais (não relacionadas à pizzaria)
+PALAVRAS_CHAVE_PESSOAL = {
+    'pessoal', 'pessoais', 'particular', 'particulares',
+    'financeiro', 'financeira', 'finanças', 'financas',
+    'gastos', 'gasto', 'despesas', 'despesa',
+    'receitas', 'receita', 'renda', 'rendas',
+    'controle', 'controlar', 'acompanhamento',
+    'orçamento', 'orcamento', 'budget',
+    'investimento', 'investimentos', 'poupança', 'poupanca',
+    'cartão', 'cartao', 'crédito', 'credito', 'débito', 'debito',
+    'conta', 'contas', 'pagamento', 'pagamentos',
+    'salário', 'salario', 'salários', 'salarios'
+}
 
 
 # ============ FUNÇÕES AUXILIARES ============
@@ -90,7 +116,7 @@ def calcular_custo_dia(dia: str, entregadores: int, chegaram_horario: int, entre
     """Calcula custos de um dia de entregas
     
     Args:
-        dia: Nome do dia da semana
+        dia: Nome do dia da semana (ex: "segunda") ou data (ex: "01/02")
         entregadores: Número de entregadores escalados
         chegaram_horario: Quantos chegaram até 18:10h
         entregas: Total de entregas realizadas
@@ -98,7 +124,21 @@ def calcular_custo_dia(dia: str, entregadores: int, chegaram_horario: int, entre
     Returns:
         dict com: custo_entregadores, bonus_horario, custo_entregas, total
     """
-    is_fds = any(d in dia.lower() for d in DIAS_FDS)
+    # Detecta se é fim de semana
+    if '/' in dia:
+        # Formato de data: parseia e verifica weekday
+        try:
+            from datetime import datetime
+            dia_num, mes_num = dia.split('/')
+            ano_atual = datetime.now().year
+            data = datetime(ano_atual, int(mes_num), int(dia_num))
+            # weekday: 0=segunda, 4=sexta, 5=sábado, 6=domingo
+            is_fds = data.weekday() >= 4
+        except:
+            is_fds = False
+    else:
+        # Formato de nome de dia
+        is_fds = any(d in dia.lower() for d in DIAS_FDS)
     
     if is_fds:
         custo_entregadores = entregadores * CUSTO_ENTREGADOR_FDS
@@ -117,6 +157,113 @@ def calcular_custo_dia(dia: str, entregadores: int, chegaram_horario: int, entre
         'total': total,
         'is_fds': is_fds
     }
+
+def detecta_tipo_periodo(texto: str) -> str:
+    """Detecta se o período mencionado é semanal ou mensal
+    
+    Args:
+        texto: Texto da descrição
+    
+    Returns:
+        'semanal' ou 'mensal'
+    """
+    texto_lower = texto.lower()
+    
+    # Verifica se menciona palavras relacionadas a mês
+    if any(palavra in texto_lower for palavra in PALAVRAS_PERIODO_MENSAL):
+        return 'mensal'
+    
+    # Por padrão, assume semanal
+    return 'semanal'
+
+
+def valida_dados_entregadores(dados: dict, tipo_periodo: str) -> list:
+    """Valida dados extraídos e retorna lista de alertas
+    
+    Args:
+        dados: Dicionário com dados extraídos
+        tipo_periodo: 'semanal' ou 'mensal'
+    
+    Returns:
+        Lista de strings com alertas (vazia se tudo OK)
+    """
+    alertas = []
+    
+    if 'dias' not in dados or not dados['dias']:
+        return alertas
+    
+    dias_data = dados['dias']
+    
+    # Valida quantidade de dias
+    if tipo_periodo == 'semanal' and len(dias_data) > 7:
+        alertas.append(f"⚠️ Período semanal com {len(dias_data)} dias (esperado: até 7)")
+    elif tipo_periodo == 'mensal' and len(dias_data) > 31:
+        alertas.append(f"⚠️ Período mensal com {len(dias_data)} dias (esperado: até 31)")
+    
+    # Valida dados de cada dia
+    total_entregas = 0
+    dias_sem_entregas = []
+    dias_muitos_entregadores = []
+    
+    for dia_info in dias_data:
+        dia = dia_info.get('dia', '?')
+        entregadores = dia_info.get('entregadores', [])
+        entregas = dia_info.get('entregas', 0)
+        
+        # Conta entregadores
+        num_entregadores = len(entregadores) if isinstance(entregadores, list) else entregadores
+        
+        # Alerta: dia sem entregas
+        if entregas == 0:
+            dias_sem_entregas.append(dia)
+        
+        # Alerta: muitos entregadores (mais de 10 é suspeito)
+        if num_entregadores > 10:
+            dias_muitos_entregadores.append(f"{dia} ({num_entregadores} entregadores)")
+        
+        total_entregas += entregas
+    
+    # Gera alertas
+    if dias_sem_entregas and len(dias_sem_entregas) <= 3:
+        alertas.append(f"⚠️ Dias sem entregas: {', '.join(dias_sem_entregas)}")
+    
+    if dias_muitos_entregadores:
+        alertas.append(f"⚠️ Muitos entregadores: {', '.join(dias_muitos_entregadores)}")
+    
+    if total_entregas == 0:
+        alertas.append("⚠️ Total de entregas é ZERO")
+    
+    return alertas
+
+
+def is_planilha_pessoal(texto: str, titulo: str = "") -> bool:
+    """Detecta se uma planilha é pessoal (não relacionada à pizzaria)
+    
+    Args:
+        texto: Texto da solicitação original
+        titulo: Título da planilha (opcional)
+    
+    Returns:
+        True se for planilha pessoal, False caso contrário
+    """
+    texto_completo = f"{texto} {titulo}".lower()
+    
+    # Verifica se contém palavras-chave pessoais
+    tem_palavra_pessoal = any(palavra in texto_completo for palavra in PALAVRAS_CHAVE_PESSOAL)
+    
+    # Verifica se NÃO contém palavras relacionadas à pizzaria/operacional
+    palavras_pizzaria = {
+        'entregador', 'entregadores', 'motoboy', 'motoboys',
+        'delivery', 'entregas', 'entrega',
+        'pizzaria', 'pizza', 'grn',
+        'operacional', 'operação', 'operacao'
+    }
+    tem_palavra_pizzaria = any(palavra in texto_completo for palavra in palavras_pizzaria)
+    
+    # É pessoal se tem palavra pessoal E não tem palavra de pizzaria
+    return tem_palavra_pessoal and not tem_palavra_pizzaria
+
+
 async def buscar_topico_por_nome(context: ContextTypes.DEFAULT_TYPE, nome_topico: str) -> int:
     """
     Busca um tópico existente no grupo pelo nome.
@@ -388,7 +535,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if await handle_relatorios(update, context, text):
             return
         
-        # ===== CRIAÇÃO DE ARQUIVOS =====
+        # ===== EDIÇÃO DE PLANILHA COM CONTEXTO (antes de criar) =====
+        if await handle_editar_planilha_contexto(update, context, text):
+            return
+        
+        # ===== CRIAÇÃO DE PLANILHA PERSONALIZADA =====
+        if await handle_criar_planilha_personalizada(update, context, text):
+            return
+        
+        # ===== CRIAÇÃO DE ARQUIVOS (genérico) =====
         if await handle_criar_arquivo(update, context, text):
             return
         
@@ -1106,14 +1261,20 @@ async def handle_ler_arquivo(update: Update, context: ContextTypes.DEFAULT_TYPE,
             
             if resultado:
                 resposta = f"📊 *Conteúdo da planilha:*\n\n"
-                resposta += f"📋 {resultado['num_planilhas']} planilha(s)\n\n"
+                resposta += f"📋 {resultado['num_planilhas']} planilha(s)\n"
                 
-                # Mostra primeiras linhas
-                texto = resultado['texto'][:1000]
+                # Mostra info por aba
+                for nome_aba, dados_aba in resultado['planilhas'].items():
+                    resposta += f"  📄 _{nome_aba}_: {len(dados_aba)} linha(s)\n"
+                resposta += "\n"
+                
+                # Mostra primeiras linhas (limite maior)
+                limite = 2000
+                texto = resultado['texto'][:limite]
                 resposta += f"```\n{texto}\n```"
                 
-                if len(resultado['texto']) > 1000:
-                    resposta += f"\n\n_...conteúdo truncado_"
+                if len(resultado['texto']) > limite:
+                    resposta += f"\n\n_...conteúdo truncado ({len(resultado['texto'])} caracteres total)_"
                 
                 await update.message.reply_text(resposta, parse_mode=ParseMode.MARKDOWN)
             else:
@@ -1208,8 +1369,49 @@ async def handle_editar_arquivo(update: Update, context: ContextTypes.DEFAULT_TY
                     else:
                         await update.message.reply_text("❌ Erro ao editar planilha")
         
+        # === REMOVER ===
+        elif 'remove' in caption_lower or 'remover' in caption_lower or 'apaga' in caption_lower or 'deleta' in caption_lower:
+            if file_name.lower().endswith('.xlsx'):
+                # Detecta número da linha
+                match = re.search(r'(?:linha|row)\s*(\d+)', caption, re.IGNORECASE)
+                
+                if match:
+                    numero_linha = int(match.group(1))
+                    resultado = pdf_tools.editar_xlsx_remover_linha(file_bytes, numero_linha)
+                    
+                    if resultado:
+                        await update.message.reply_document(
+                            document=io.BytesIO(resultado),
+                            filename=file_name,
+                            caption=f"✅ Linha {numero_linha} removida"
+                        )
+                    else:
+                        await update.message.reply_text("❌ Erro ao remover linha da planilha")
+                else:
+                    await update.message.reply_text("❌ Especifique a linha a remover. Ex: 'remove linha 3'")
+            
+            elif file_name.lower().endswith('.docx'):
+                # Remove parágrafo contendo texto
+                match = re.search(r'(?:remove|remover|apaga|deleta)[:\s]+(.+)', caption, re.IGNORECASE | re.DOTALL)
+                
+                if match:
+                    texto_busca = match.group(1).strip()
+                    resultado = pdf_tools.editar_docx_remover_paragrafo(file_bytes, texto_busca)
+                    
+                    if resultado:
+                        docx_bytes, num_removidos = resultado
+                        await update.message.reply_document(
+                            document=io.BytesIO(docx_bytes),
+                            filename=file_name,
+                            caption=f"✅ {num_removidos} parágrafo(s) removido(s)"
+                        )
+                    else:
+                        await update.message.reply_text("❌ Erro ao remover do documento")
+                else:
+                    await update.message.reply_text("❌ Especifique o que remover. Ex: 'remove: texto a apagar'")
+        
         else:
-            await update.message.reply_text("❌ Comando não reconhecido. Use:\n• 'adiciona: texto'\n• 'substitui X por Y'")
+            await update.message.reply_text("❌ Comando não reconhecido. Use:\n• 'adiciona: texto'\n• 'substitui X por Y'\n• 'remove linha 3'")
     
     except Exception as e:
         logger.error(f"Erro ao editar arquivo: {e}")
@@ -1420,6 +1622,20 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     parse_mode=ParseMode.MARKDOWN
                 )
                 
+                # Salva planilha COM NOMES no contexto para edições futuras
+                context.user_data['ultima_planilha'] = {
+                    'nome_arquivo': nome_arquivo_v2,
+                    'tipo': 'entregadores',
+                    'timestamp': datetime.now(),
+                    'bytes': xlsx_v2_bytes,
+                    'estrutura': dados_planilha,
+                    'descricao_original': f"Planilha de entregadores - {periodo}",
+                    'versao': 1,
+                    'historico_edicoes': [{'acao': 'criacao', 'timestamp': datetime.now()}]
+                }
+                
+                logger.info(f"✅ Planilha de entregadores salva no contexto: {nome_arquivo_v2}")
+                
                 return True
                 
             except Exception as e:
@@ -1455,11 +1671,15 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
         
         if tem_verbo or 'planilha' in text_lower:
             # É pedido de planilha!
-            await update.message.reply_text("⏳ Analisando dados da semana...")
+            await update.message.reply_text("⏳ Analisando dados...")
             
             try:
-                # Extrai dados com IA
-                resultado = await ai.extrair_dados_entregadores(text)
+                # Detecta tipo de período (semanal ou mensal)
+                tipo_periodo = detecta_tipo_periodo(text)
+                logger.info(f"Tipo de período detectado: {tipo_periodo}")
+                
+                # Extrai dados com IA passando o tipo de período
+                resultado = await ai.extrair_dados_entregadores(text, tipo_periodo)
                 
                 if not resultado['sucesso']:
                     await update.message.reply_text(
@@ -1473,6 +1693,9 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     return True
                 
                 dados = resultado['dados']
+                
+                # Valida dados e obtém alertas
+                alertas = valida_dados_entregadores(dados, tipo_periodo)
                 
                 # Calcula totais usando função auxiliar
                 total_entregas = 0
@@ -1499,37 +1722,48 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     total_custo += custos['total']
                     
                     # Monta linha do resumo
+                    dia_display = dia.capitalize() if '/' not in dia else dia
+                    
                     if custos['is_fds'] and chegaram_horario > 0:
                         resumo_dias.append(
-                            f"• {dia.capitalize()}: {num_entregadores} entregadores, "
+                            f"• {dia_display}: {num_entregadores} entregadores, "
                             f"{chegaram_horario} no horário, {entregas} entregas = R$ {custos['total']:,.2f}"
                         )
                     else:
                         resumo_dias.append(
-                            f"• {dia.capitalize()}: {num_entregadores} entregadores, "
+                            f"• {dia_display}: {num_entregadores} entregadores, "
                             f"{entregas} entregas = R$ {custos['total']:,.2f}"
                         )
                 
                 # Monta mensagem de confirmação
+                tipo_display = "SEMANA" if tipo_periodo == 'semanal' else "MÊS"
                 mensagem_confirmacao = (
                     f"📊 *Entendi! Vou criar a planilha:*\n\n"
-                    f"*{dados.get('periodo', 'Semana')}*\n\n"
+                    f"*{dados.get('periodo', tipo_display)}*\n\n"
                     f"{chr(10).join(resumo_dias)}\n\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"💰 *TOTAL DA SEMANA: R$ {total_custo:,.2f}*\n"
+                    f"💰 *TOTAL: R$ {total_custo:,.2f}*\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"📋 Resumo:\n"
                     f"• {len(dados['dias'])} dias\n"
-                    f"• {total_entregas} entregas\n\n"
-                    f"Está correto? *(responda 'sim' ou 'confirma')*"
+                    f"• {total_entregas} entregas\n"
                 )
+                
+                # Adiciona alertas se houver
+                if alertas:
+                    mensagem_confirmacao += f"\n⚠️ *Alertas:*\n"
+                    for alerta in alertas:
+                        mensagem_confirmacao += f"• {alerta}\n"
+                
+                mensagem_confirmacao += f"\nEstá correto? *(responda 'sim' ou 'confirma')*"
                 
                 # Formata valores monetários
                 mensagem_confirmacao = mensagem_confirmacao.replace(',', 'X').replace('.', ',').replace('X', '.')
                 
                 await update.message.reply_text(mensagem_confirmacao, parse_mode=ParseMode.MARKDOWN)
                 
-                # Salva dados pendentes
+                # Salva dados pendentes com tipo de período
+                dados['tipo_periodo'] = tipo_periodo
                 context.user_data['planilha_pendente'] = dados
                 
                 return True
@@ -1540,6 +1774,281 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                 return True
     
     return False
+
+
+# ============ PLANILHAS PERSONALIZADAS COM CONTEXTO ============
+
+async def handle_criar_planilha_personalizada(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """Cria planilha personalizada a partir de descrição natural"""
+    
+    text_lower = text.lower()
+    
+    # Detecta pedido de planilha personalizada
+    # Deve ter verbo de criação + "planilha" mas NÃO "entregadores"
+    tem_verbo = any(verbo in text_lower for verbo in VERBOS_CRIACAO)
+    tem_planilha = 'planilha' in text_lower or 'excel' in text_lower or 'xlsx' in text_lower
+    nao_entregadores = 'entregador' not in text_lower and 'entregadores' not in text_lower
+    
+    if tem_verbo and tem_planilha and nao_entregadores:
+        await update.message.reply_text("⏳ Analisando sua solicitação...")
+        
+        try:
+            # Salva texto original para detecção posterior
+            context.user_data['texto_solicitacao_planilha'] = text
+            
+            # Extrai estrutura com IA
+            resultado = await ai.extrair_estrutura_planilha(text)
+            
+            if not resultado['sucesso']:
+                await update.message.reply_text(
+                    f"❌ Não consegui entender a estrutura da planilha.\n\n"
+                    f"Erro: {resultado.get('erro', 'Desconhecido')}\n\n"
+                    f"Tente descrever assim:\n"
+                    f"'Cria planilha de gastos com colunas: data, descrição, valor, categoria'"
+                )
+                return True
+            
+            estrutura = resultado['estrutura']
+            
+            # Monta mensagem de confirmação
+            colunas_desc = []
+            if 'colunas' not in estrutura or not estrutura['colunas']:
+                await update.message.reply_text("❌ Erro: estrutura sem colunas definidas")
+                return True
+            
+            for idx, col in enumerate(estrutura['colunas'], 1):
+                tipo_emoji = {
+                    'texto': '📝',
+                    'numero': '🔢',
+                    'moeda': '💰',
+                    'data': '📅',
+                    'porcentagem': '📊'
+                }.get(col['tipo'], '📋')
+                colunas_desc.append(f"{idx}. {tipo_emoji} {col['nome']} ({col['tipo']})")
+            
+            mensagem = (
+                f"📊 *Entendi! Vou criar:*\n\n"
+                f"*{estrutura.get('titulo', 'Planilha')}*\n\n"
+                f"*Colunas:*\n"
+                f"{chr(10).join(colunas_desc)}\n\n"
+            )
+            
+            if estrutura.get('tem_total'):
+                mensagem += f"✅ Com linha de TOTAL\n\n"
+            
+            mensagem += f"Quer que eu adicione dados de exemplo? *(responda 'sim' ou 'não')*"
+            
+            await update.message.reply_text(mensagem, parse_mode=ParseMode.MARKDOWN)
+            
+            # Salva estrutura pendente
+            context.user_data['planilha_personalizada_pendente'] = estrutura
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao processar planilha personalizada: {e}")
+            await update.message.reply_text(f"❌ Erro ao processar: {str(e)}")
+            return True
+    
+    # Verifica se é confirmação de planilha personalizada pendente
+    if 'planilha_personalizada_pendente' in context.user_data:
+        if any(palavra in text_lower for palavra in PALAVRAS_CONFIRMACAO):
+            # CONFIRMOU - Criar planilha
+            await update.message.reply_text("✅ Criando planilha...")
+            
+            try:
+                estrutura = context.user_data['planilha_personalizada_pendente']
+                
+                # Usa dados de exemplo se houver
+                dados = estrutura.get('dados_exemplo', [])
+                
+                # Cria planilha
+                xlsx_bytes = pdf_tools.criar_xlsx_estruturada(estrutura, dados)
+                
+                if not xlsx_bytes:
+                    await update.message.reply_text("❌ Erro ao criar planilha")
+                    return True
+                
+                # Nome do arquivo
+                titulo = estrutura.get('titulo', 'planilha')
+                nome_arquivo = titulo.lower().replace(' ', '_')[:30] + '.xlsx'
+                
+                # Detecta se é planilha pessoal
+                texto_original = context.user_data.get('texto_solicitacao_planilha', '')
+                eh_pessoal = is_planilha_pessoal(texto_original, titulo)
+                
+                # Prepara caption
+                caption = f"📊 *{titulo}*\n\n✅ Planilha criada com sucesso!\n\n💾 Salva no contexto por 2 horas\n💡 Você pode adicionar dados dizendo: 'Adiciona: valor1, valor2, ...'"
+                
+                if eh_pessoal:
+                    # Planilha PESSOAL - envia no tópico Pessoal
+                    topico_pessoal = config.TOPICS.get('pessoal', 0)
+                    
+                    if topico_pessoal and topico_pessoal != 0:
+                        # Envia no tópico Pessoal
+                        await context.bot.send_document(
+                            chat_id=config.GROUP_ID,
+                            message_thread_id=topico_pessoal,
+                            document=io.BytesIO(xlsx_bytes),
+                            filename=nome_arquivo,
+                            caption=f"{caption}\n\n📁 *Salvo no tópico: Pessoal*",
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                        
+                        # Confirma no chat onde foi solicitado
+                        await update.message.reply_text(
+                            f"✅ Planilha pessoal criada!\n\n"
+                            f"📁 Enviada para o tópico *Pessoal*\n"
+                            f"📊 Arquivo: {nome_arquivo}",
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                        
+                        logger.info(f"✅ Planilha PESSOAL enviada para tópico Pessoal: {nome_arquivo}")
+                    else:
+                        # Fallback: envia no mesmo tópico
+                        await update.message.reply_document(
+                            document=io.BytesIO(xlsx_bytes),
+                            filename=nome_arquivo,
+                            caption=caption,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                        logger.warning(f"⚠️ Tópico Pessoal não configurado, enviando no mesmo tópico")
+                else:
+                    # Planilha NÃO-PESSOAL - envia no mesmo tópico (comportamento original)
+                    await update.message.reply_document(
+                        document=io.BytesIO(xlsx_bytes),
+                        filename=nome_arquivo,
+                        caption=caption,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    logger.info(f"✅ Planilha criada e enviada no mesmo tópico: {nome_arquivo}")
+                
+                # Salva no contexto para edições futuras
+                context.user_data['ultima_planilha'] = {
+                    'nome_arquivo': nome_arquivo,
+                    'tipo': 'personalizada',
+                    'eh_pessoal': eh_pessoal,
+                    'timestamp': datetime.now(),
+                    'bytes': xlsx_bytes,
+                    'estrutura': estrutura,
+                    'descricao_original': context.user_data.get('planilha_personalizada_pendente', {}).get('titulo', ''),
+                    'versao': 1,
+                    'historico_edicoes': [{'acao': 'criacao', 'timestamp': datetime.now()}]
+                }
+                
+                logger.info(f"✅ Planilha personalizada salva no contexto: {nome_arquivo} (pessoal={eh_pessoal})")
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"❌ Erro ao criar planilha: {e}")
+                await update.message.reply_text(f"❌ Erro ao criar planilha: {str(e)}")
+                return True
+            finally:
+                context.user_data.pop('planilha_personalizada_pendente', None)
+        
+        elif any(palavra in text_lower for palavra in PALAVRAS_NEGACAO):
+            # NEGOU - Cancelar
+            await update.message.reply_text("❌ Planilha cancelada.")
+            context.user_data.pop('planilha_personalizada_pendente', None)
+            return True
+    
+    return False
+
+
+async def handle_editar_planilha_contexto(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """Edita planilha usando contexto (sem precisar enviar arquivo)"""
+    
+    text_lower = text.lower()
+    
+    # Verifica se tem planilha no contexto
+    if 'ultima_planilha' not in context.user_data:
+        return False
+    
+    # Detecta comandos de edição
+    tem_adicionar = any(palavra in text_lower for palavra in PALAVRAS_ADICIONAR)
+    tem_editar = any(palavra in text_lower for palavra in PALAVRAS_EDITAR)
+    tem_remover = any(palavra in text_lower for palavra in PALAVRAS_REMOVER)
+    
+    if not (tem_adicionar or tem_editar or tem_remover):
+        return False
+    
+    # Verifica se planilha não expirou (2 horas)
+    planilha_ctx = context.user_data['ultima_planilha']
+    tempo_decorrido = datetime.now() - planilha_ctx['timestamp']
+    if tempo_decorrido.total_seconds() > 7200:  # 2 horas
+        await update.message.reply_text(
+            "⏰ A planilha anterior expirou (mais de 2 horas).\n\n"
+            "Envie o arquivo novamente ou crie uma nova planilha."
+        )
+        context.user_data.pop('ultima_planilha', None)
+        return True
+    
+    await update.message.reply_text("⏳ Interpretando sua solicitação...")
+    
+    try:
+        # Interpreta edição com IA
+        estrutura = planilha_ctx['estrutura']
+        resultado = await ai.interpretar_edicao_planilha(text, estrutura)
+        
+        if not resultado['sucesso']:
+            await update.message.reply_text(
+                f"❌ Não consegui entender a edição.\n\n"
+                f"Erro: {resultado.get('erro', 'Desconhecido')}\n\n"
+                f"Tente comandos como:\n"
+                f"• 'Adiciona: valor1, valor2, ...'\n"
+                f"• 'Muda o valor da linha 2 para 100'\n"
+                f"• 'Remove a última linha'"
+            )
+            return True
+        
+        acao = resultado['acao']
+        parametros = resultado['parametros']
+        
+        # Aplica edição na planilha
+        xlsx_bytes = planilha_ctx['bytes']
+        estrutura = planilha_ctx['estrutura']
+        
+        resultado_edicao = pdf_tools.aplicar_edicao_planilha(xlsx_bytes, acao, parametros, estrutura)
+        
+        if not resultado_edicao:
+            await update.message.reply_text(
+                f"❌ Erro ao aplicar edição.\n\n"
+                f"Verifique se os parâmetros estão corretos e tente novamente."
+            )
+            return True
+        
+        xlsx_modificado, mensagem_sucesso = resultado_edicao
+        
+        # Atualiza contexto
+        planilha_ctx['bytes'] = xlsx_modificado
+        planilha_ctx['versao'] = planilha_ctx.get('versao', 1) + 1
+        planilha_ctx['timestamp'] = datetime.now()
+        planilha_ctx['historico_edicoes'].append({
+            'acao': acao,
+            'timestamp': datetime.now(),
+            'parametros': parametros
+        })
+        
+        # Envia planilha atualizada
+        nome_arquivo = planilha_ctx['nome_arquivo']
+        titulo = estrutura.get('titulo', 'Planilha')
+        
+        await update.message.reply_document(
+            document=io.BytesIO(xlsx_modificado),
+            filename=nome_arquivo,
+            caption=f"📊 *{titulo}* (v{planilha_ctx['versao']})\n\n{mensagem_sucesso}\n\n💡 Você pode continuar editando por mais 2 horas.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        logger.info(f"✅ Edição aplicada: {acao}, versão {planilha_ctx['versao']}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao editar planilha: {e}")
+        await update.message.reply_text(f"❌ Erro ao processar edição: {str(e)}")
+        return True
 
 
 # ============ MAIN ============
