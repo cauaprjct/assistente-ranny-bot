@@ -723,78 +723,36 @@ async def extrair_estrutura_planilha(descricao: str) -> dict:
                 "erro": "Descrição vazia"
             }
         
-        descricao = descricao.strip()[:1000]  # Limita a 1000 caracteres
-        prompt = f"""Você é um assistente especializado em criar planilhas Excel.
+        descricao = descricao.strip()[:2000]  # Aumenta limite para 2000 caracteres
+        prompt = f"""Você é um assistente que extrai estrutura de planilhas Excel.
 
-TAREFA:
-Analise a descrição abaixo e extraia a estrutura da planilha desejada.
-
-DESCRIÇÃO:
+DESCRIÇÃO DO USUÁRIO:
 {descricao}
 
-RETORNE APENAS UM JSON VÁLIDO (sem ```json, sem explicações, sem comentários) com esta estrutura:
+RETORNE APENAS UM JSON VÁLIDO (sem markdown, sem explicações):
+
 {{
-  "titulo": "Nome descritivo da planilha",
+  "titulo": "Nome da planilha",
   "colunas": [
-    {{
-      "nome": "Nome da Coluna",
-      "tipo": "texto",
-      "largura": 15
-    }}
+    {{"nome": "Coluna1", "tipo": "texto", "largura": 15}},
+    {{"nome": "Coluna2", "tipo": "moeda", "largura": 12}}
   ],
   "dados_exemplo": [
-    ["exemplo1", "exemplo2"]
+    ["valor1", 100.50],
+    ["valor2", 200.00]
   ],
   "tem_total": true,
-  "colunas_total": ["Nome das colunas"]
+  "colunas_total": ["Coluna2"]
 }}
 
-IMPORTANTE:
-- Use APENAS aspas duplas ("), nunca aspas simples (')
-- NÃO inclua comentários no JSON (nada com //)
-- NÃO adicione vírgulas após o último item de arrays ou objetos
-- Valores booleanos: true ou false (minúsculas, sem aspas)
-- Valores numéricos: sem aspas (ex: 15, não "15")
-- Valores de texto: sempre entre aspas duplas
+TIPOS VÁLIDOS: texto, numero, moeda, data, porcentagem
 
 REGRAS:
-1. Identifique o tipo correto de cada coluna:
-   - "texto": nomes, descrições, categorias
-   - "numero": quantidades, contadores
-   - "moeda": valores em R$
-   - "data": datas (DD/MM/AAAA)
-   - "porcentagem": valores em %
-
-2. Largura sugerida:
-   - texto curto: 15
-   - texto longo (descrição): 30
-   - numero/moeda: 12
-   - data: 12
-   - porcentagem: 10
-
-3. tem_total = true se houver colunas numéricas/moeda que devem ser somadas
-
-4. dados_exemplo: 
-   - Se a descrição incluir dados específicos, extraia TODAS as linhas fornecidas
-   - Identifique múltiplas linhas mesmo sem quebras de linha
-   - Cada linha de dados deve ser um array dentro de dados_exemplo
-   - Se não houver dados específicos, crie 2-3 linhas de exemplo com valores realistas
-
-EXEMPLO DE JSON VÁLIDO:
-{{
-  "titulo": "Controle de Vendas",
-  "colunas": [
-    {{"nome": "Data", "tipo": "data", "largura": 12}},
-    {{"nome": "Produto", "tipo": "texto", "largura": 20}},
-    {{"nome": "Valor", "tipo": "moeda", "largura": 12}}
-  ],
-  "dados_exemplo": [
-    ["01/02/2026", "Produto A", 150.50],
-    ["02/02/2026", "Produto B", 200.00]
-  ],
-  "tem_total": true,
-  "colunas_total": ["Valor"]
-}}
+1. Extraia TODAS as linhas de dados fornecidas (não limite a 1 ou 2)
+2. Use aspas duplas sempre
+3. Números sem aspas, textos com aspas
+4. Booleanos: true ou false (sem aspas)
+5. Não adicione vírgulas após último item
 
 RETORNE APENAS O JSON:"""
 
@@ -834,7 +792,7 @@ RETORNE APENAS O JSON:"""
             estrutura = json.loads(resposta_texto)
         except json.JSONDecodeError as e:
             logger.error(f"JSON inválido retornado pela IA:")
-            logger.error(f"Resposta completa: {resposta_texto}")
+            logger.error(f"Resposta completa ({len(resposta_texto)} chars): {resposta_texto}")
             logger.error(f"Erro de parse: {e}")
             
             # Tenta usar json5 para parse mais tolerante
@@ -843,10 +801,46 @@ RETORNE APENAS O JSON:"""
                 estrutura = json5.loads(resposta_texto)
                 logger.info("JSON parseado com sucesso usando json5")
             except Exception as e2:
-                return {
-                    "sucesso": False,
-                    "erro": f"IA retornou JSON inválido: {str(e)}"
-                }
+                logger.error(f"json5 também falhou: {e2}")
+                
+                # Última tentativa: pede para a IA corrigir o JSON
+                try:
+                    logger.info("Tentando pedir para IA corrigir o JSON...")
+                    prompt_correcao = f"""O JSON abaixo está inválido. Corrija-o e retorne APENAS o JSON válido (sem explicações):
+
+{resposta_texto}
+
+RETORNE APENAS O JSON CORRIGIDO:"""
+                    
+                    response_correcao = model_planilha.generate_content(
+                        prompt_correcao,
+                        generation_config=genai.types.GenerationConfig(
+                            temperature=0.0,
+                            max_output_tokens=3000,
+                        )
+                    )
+                    
+                    if response_correcao and response_correcao.text:
+                        resposta_corrigida = response_correcao.text.strip()
+                        resposta_corrigida = resposta_corrigida.replace('```json', '').replace('```', '').strip()
+                        
+                        # Extrai JSON
+                        inicio = resposta_corrigida.find('{')
+                        fim = resposta_corrigida.rfind('}')
+                        if inicio != -1 and fim != -1:
+                            resposta_corrigida = resposta_corrigida[inicio:fim+1]
+                        
+                        estrutura = json.loads(resposta_corrigida)
+                        logger.info("JSON corrigido com sucesso pela IA!")
+                    else:
+                        raise Exception("IA não retornou correção")
+                        
+                except Exception as e3:
+                    logger.error(f"Correção automática falhou: {e3}")
+                    return {
+                        "sucesso": False,
+                        "erro": f"IA retornou JSON inválido: {str(e)}"
+                    }
         
         # Valida estrutura básica
         if 'colunas' not in estrutura or not isinstance(estrutura['colunas'], list):
