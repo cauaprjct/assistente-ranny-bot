@@ -460,21 +460,22 @@ Responda apenas com a categoria, sem explicação."""
 
 
 
-async def extrair_dados_entregadores(texto: str) -> dict:
+async def extrair_dados_entregadores(texto: str, tipo_periodo: str = 'semanal') -> dict:
     """Extrai dados de entregadores do texto usando IA
     
     Args:
-        texto: Descrição da semana de entregas
+        texto: Descrição da semana/mês de entregas
+        tipo_periodo: 'semanal' ou 'mensal' (padrão: 'semanal')
     
     Returns:
         Dicionário com estrutura:
         {
             "sucesso": True/False,
             "dados": {
-                "periodo": "Semana 10/02 a 16/02",
+                "periodo": "Semana 10/02 a 16/02" ou "Janeiro/2026",
                 "dias": [
                     {
-                        "dia": "segunda", 
+                        "dia": "segunda" (semanal) ou "01/02" (mensal), 
                         "entregadores": ["João", "Pedro", "Maria"], 
                         "chegaram_horario": 0, 
                         "entregas": 20
@@ -486,7 +487,79 @@ async def extrair_dados_entregadores(texto: str) -> dict:
         }
     """
     try:
-        prompt = f"""Você é um assistente que extrai dados estruturados de texto.
+        # Detecta mês mencionado no texto (para período mensal)
+        meses_map = {
+            'janeiro': 1, 'fevereiro': 2, 'março': 3, 'marco': 3,
+            'abril': 4, 'maio': 5, 'junho': 6,
+            'julho': 7, 'agosto': 8, 'setembro': 9,
+            'outubro': 10, 'novembro': 11, 'dezembro': 12
+        }
+        
+        mes_detectado = None
+        texto_lower = texto.lower()
+        for nome_mes, num_mes in meses_map.items():
+            if nome_mes in texto_lower:
+                mes_detectado = num_mes
+                break
+        
+        # Se é mensal e não detectou mês, usa mês atual
+        if tipo_periodo == 'mensal' and mes_detectado is None:
+            from datetime import datetime
+            mes_detectado = datetime.now().month
+        
+        # Cria prompt baseado no tipo de período
+        if tipo_periodo == 'mensal':
+            # PROMPT MENSAL - usa datas (DD/MM)
+            from datetime import datetime
+            import calendar
+            
+            ano_atual = datetime.now().year
+            mes_nome = list(meses_map.keys())[mes_detectado - 1].capitalize()
+            num_dias = calendar.monthrange(ano_atual, mes_detectado)[1]
+            
+            prompt = f"""Você é um assistente que extrai dados estruturados de texto.
+
+CONTEXTO:
+A Ranny descreve o mês de trabalho dos entregadores da pizzaria.
+
+REGRAS DE NEGÓCIO:
+- Segunda a quinta: R$ 1,00 por entregador escalado
+- Sexta a domingo: R$ 10,00 por entregador escalado
+- Sexta a domingo: R$ 10,00 adicional por cada entregador que chegar até 18:10h
+- Sempre: R$ 12,00 por entrega realizada
+
+IMPORTANTE:
+- Use formato DD/MM para as datas (exemplo: "01/{mes_detectado:02d}", "02/{mes_detectado:02d}", etc.)
+- O mês tem {num_dias} dias
+- "chegaram_horario" deve ser 0 (zero) para segunda a quinta
+- "chegaram_horario" só tem valor para sexta, sábado e domingo
+- Se não mencionar quem chegou no horário, assume 0
+
+TAREFA:
+Extraia os dados do texto abaixo e retorne APENAS um JSON válido (sem markdown, sem explicações).
+
+FORMATO DO JSON:
+{{
+  "periodo": "{mes_nome}/{ano_atual}",
+  "dias": [
+    {{"dia": "01/{mes_detectado:02d}", "entregadores": ["João Silva", "Pedro Santos"], "chegaram_horario": 0, "entregas": 20}},
+    {{"dia": "02/{mes_detectado:02d}", "entregadores": ["João Silva", "Pedro Santos"], "chegaram_horario": 0, "entregas": 18}},
+    ...
+  ]
+}}
+
+IMPORTANTE SOBRE NOMES:
+- "entregadores" deve ser uma LISTA com os NOMES dos entregadores que trabalharam naquele dia
+- Se a Ranny não mencionar nomes específicos, use nomes genéricos como ["Entregador 1", "Entregador 2", etc]
+- O número de nomes na lista deve corresponder à quantidade de entregadores do dia
+
+TEXTO DA RANNY:
+{texto}
+
+RETORNE APENAS O JSON (sem ```json, sem explicações):"""
+        else:
+            # PROMPT SEMANAL - usa nomes de dias (segunda, terça, etc.)
+            prompt = f"""Você é um assistente que extrai dados estruturados de texto.
 
 CONTEXTO:
 A Ranny descreve a semana de trabalho dos entregadores da pizzaria.
@@ -530,7 +603,7 @@ TEXTO DA RANNY:
 {texto}
 
 RETORNE APENAS O JSON (sem ```json, sem explicações):"""
-
+        
         model_entregadores = genai.GenerativeModel('gemini-2.5-flash')
         
         response = model_entregadores.generate_content(
@@ -579,8 +652,8 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
                     "erro": f"Dia {dia.get('dia', '?')}: 'entregadores' deve ser lista ou número"
                 }
         
-        # Gera período se não tiver ou se for placeholder
-        if 'periodo' not in dados or not dados['periodo'] or 'DD/MM' in dados.get('periodo', ''):
+        # Gera período se não tiver ou se for placeholder (apenas para semanal)
+        if tipo_periodo == 'semanal' and ('periodo' not in dados or not dados['periodo'] or 'DD/MM' in dados.get('periodo', '')):
             from datetime import datetime, timedelta
             hoje = datetime.now()
             
@@ -591,7 +664,7 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
             
             dados['periodo'] = f"Semana {segunda_anterior.strftime('%d/%m')} a {domingo_anterior.strftime('%d/%m')}"
         
-        logger.info(f"Dados de entregadores extraídos: {len(dados['dias'])} dias")
+        logger.info(f"Dados de entregadores extraídos ({tipo_periodo}): {len(dados['dias'])} dias")
         
         return {
             "sucesso": True,
@@ -607,6 +680,338 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
         }
     except Exception as e:
         logger.error(f"Erro ao extrair dados de entregadores: {e}")
+        return {
+            "sucesso": False,
+            "erro": str(e)
+        }
+
+
+
+# ============ FUNÇÕES PARA PLANILHAS PERSONALIZADAS ============
+
+async def extrair_estrutura_planilha(descricao: str) -> dict:
+    """Extrai estrutura de planilha a partir de descrição natural
+    
+    Args:
+        descricao: Descrição natural da planilha desejada (max 1000 chars)
+    
+    Returns:
+        Dicionário com estrutura:
+        {
+            "sucesso": True/False,
+            "estrutura": {
+                "titulo": "Nome da Planilha",
+                "colunas": [
+                    {"nome": "Coluna1", "tipo": "texto|numero|moeda|data|porcentagem", "largura": 15},
+                    ...
+                ],
+                "dados_exemplo": [
+                    ["valor1", "valor2", ...],
+                    ...
+                ],
+                "tem_total": True/False,
+                "colunas_total": ["Coluna1", "Coluna2"]  // quais colunas devem ter total
+            },
+            "erro": "mensagem" (se falhar)
+        }
+    """
+    try:
+        # Sanitiza input do usuário
+        if not descricao or not descricao.strip():
+            return {
+                "sucesso": False,
+                "erro": "Descrição vazia"
+            }
+        
+        descricao = descricao.strip()[:1000]  # Limita a 1000 caracteres
+        prompt = f"""Você é um assistente especializado em criar planilhas Excel.
+
+TAREFA:
+Analise a descrição abaixo e extraia a estrutura da planilha desejada.
+
+DESCRIÇÃO:
+{descricao}
+
+RETORNE APENAS UM JSON VÁLIDO (sem ```json, sem explicações) com esta estrutura:
+{{
+  "titulo": "Nome descritivo da planilha",
+  "colunas": [
+    {{
+      "nome": "Nome da Coluna",
+      "tipo": "texto|numero|moeda|data|porcentagem",
+      "largura": 15
+    }}
+  ],
+  "dados_exemplo": [
+    ["exemplo1", "exemplo2", ...]
+  ],
+  "tem_total": true,
+  "colunas_total": ["Nome das colunas que devem ter linha de total"]
+}}
+
+REGRAS:
+1. Identifique o tipo correto de cada coluna:
+   - "texto": nomes, descrições, categorias
+   - "numero": quantidades, contadores
+   - "moeda": valores em R$
+   - "data": datas (DD/MM/AAAA)
+   - "porcentagem": valores em %
+
+2. Largura sugerida:
+   - texto curto: 15
+   - texto longo (descrição): 30
+   - numero/moeda: 12
+   - data: 12
+   - porcentagem: 10
+
+3. tem_total = true se houver colunas numéricas/moeda que devem ser somadas
+
+4. dados_exemplo: crie 1 linha de exemplo com valores realistas
+
+5. Se a descrição incluir dados específicos, use-os ao invés de exemplos
+
+RETORNE APENAS O JSON:"""
+
+        model_planilha = genai.GenerativeModel('gemini-2.5-flash')
+        
+        response = model_planilha.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.2,
+                max_output_tokens=2000,
+            )
+        )
+        
+        if not response or not response.text:
+            return {
+                "sucesso": False,
+                "erro": "IA não retornou resposta"
+            }
+        
+        # Limpa resposta
+        resposta_texto = response.text.strip()
+        resposta_texto = resposta_texto.replace('```json', '').replace('```', '').strip()
+        
+        # Parse JSON
+        estrutura = json.loads(resposta_texto)
+        
+        # Valida estrutura básica
+        if 'colunas' not in estrutura or not isinstance(estrutura['colunas'], list):
+            return {
+                "sucesso": False,
+                "erro": "Estrutura JSON inválida - faltam colunas"
+            }
+        
+        if not estrutura['colunas']:
+            return {
+                "sucesso": False,
+                "erro": "Nenhuma coluna identificada"
+            }
+        
+        # Valida tipos de coluna
+        tipos_validos = {'texto', 'numero', 'moeda', 'data', 'porcentagem'}
+        for idx, col in enumerate(estrutura['colunas']):
+            if 'tipo' not in col or col['tipo'] not in tipos_validos:
+                return {
+                    "sucesso": False,
+                    "erro": f"Coluna {idx+1}: tipo inválido (deve ser: texto, numero, moeda, data ou porcentagem)"
+                }
+            if 'nome' not in col or not col['nome']:
+                return {
+                    "sucesso": False,
+                    "erro": f"Coluna {idx+1}: nome obrigatório"
+                }
+            if 'largura' in col and (not isinstance(col['largura'], (int, float)) or col['largura'] <= 0):
+                return {
+                    "sucesso": False,
+                    "erro": f"Coluna {idx+1}: largura deve ser número positivo"
+                }
+        
+        # Valida tem_total
+        if 'tem_total' in estrutura and not isinstance(estrutura['tem_total'], bool):
+            return {
+                "sucesso": False,
+                "erro": "tem_total deve ser true ou false"
+            }
+        
+        # Valida colunas_total
+        if 'colunas_total' in estrutura and not isinstance(estrutura['colunas_total'], list):
+            return {
+                "sucesso": False,
+                "erro": "colunas_total deve ser uma lista"
+            }
+        
+        logger.info(f"Estrutura de planilha extraída: {estrutura.get('titulo', 'Sem título')}, {len(estrutura['colunas'])} colunas")
+        
+        return {
+            "sucesso": True,
+            "estrutura": estrutura
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao fazer parse do JSON: {e}")
+        return {
+            "sucesso": False,
+            "erro": f"Erro ao interpretar resposta da IA: {str(e)}"
+        }
+    except Exception as e:
+        logger.error(f"Erro ao extrair estrutura de planilha: {e}")
+        return {
+            "sucesso": False,
+            "erro": str(e)
+        }
+
+
+async def interpretar_edicao_planilha(instrucao: str, estrutura: dict) -> dict:
+    """Interpreta instrução de edição de planilha
+    
+    Args:
+        instrucao: Comando natural de edição (max 500 chars)
+        estrutura: Estrutura atual da planilha (colunas, etc)
+    
+    Returns:
+        Dicionário com ação:
+        {
+            "sucesso": True/False,
+            "acao": "adicionar_linha|editar_celula|remover_linha|editar_coluna|substituir_valor",
+            "parametros": {
+                "linha": numero ou null,
+                "coluna": nome ou null,
+                "valores": [...] ou null,
+                "operacao": "multiplicar|dividir|somar|subtrair" ou null,
+                "fator": numero ou null
+            },
+            "erro": "mensagem" (se falhar)
+        }
+    """
+    try:
+        # Sanitiza input do usuário
+        if not instrucao or not instrucao.strip():
+            return {
+                "sucesso": False,
+                "erro": "Instrução vazia"
+            }
+        
+        instrucao = instrucao.strip()[:500]  # Limita a 500 caracteres
+        # Monta descrição das colunas
+        colunas_desc = []
+        for idx, col in enumerate(estrutura.get('colunas', [])):
+            colunas_desc.append(f"Coluna {idx+1}: {col['nome']} ({col['tipo']})")
+        
+        colunas_texto = "\n".join(colunas_desc)
+        
+        prompt = f"""Você é um assistente especializado em editar planilhas Excel.
+
+ESTRUTURA DA PLANILHA:
+{colunas_texto}
+
+INSTRUÇÃO DO USUÁRIO:
+{instrucao}
+
+TAREFA:
+Interprete a instrução e retorne APENAS UM JSON VÁLIDO (sem ```json, sem explicações) com esta estrutura:
+
+{{
+  "acao": "adicionar_linha|editar_celula|remover_linha|editar_coluna|substituir_valor",
+  "parametros": {{
+    "linha": numero_da_linha_ou_null,
+    "coluna": "nome_da_coluna_ou_null",
+    "valores": ["valor1", "valor2", ...] ou null,
+    "operacao": "multiplicar|dividir|somar|subtrair" ou null,
+    "fator": numero ou null
+  }}
+}}
+
+TIPOS DE AÇÃO:
+1. adicionar_linha: adicionar uma ou mais linhas de dados
+   - valores: array com valores para cada coluna
+
+2. editar_celula: alterar valor de célula específica
+   - linha: número da linha (1, 2, 3...)
+   - coluna: nome da coluna
+   - valores: [novo_valor]
+
+3. remover_linha: remover linha(s)
+   - linha: número da linha ou "ultima" ou "todas"
+
+4. editar_coluna: aplicar operação em coluna inteira
+   - coluna: nome da coluna
+   - operacao: tipo de operação
+   - fator: número para aplicar
+
+5. substituir_valor: buscar e substituir valores
+   - coluna: nome da coluna (ou null para todas)
+   - valores: [valor_antigo, valor_novo]
+
+EXEMPLOS:
+- "Adiciona: 10/02, Mercado, 150, Alimentação" → adicionar_linha com valores
+- "Muda o valor da linha 2 para 200" → editar_celula, linha 2, coluna do tipo moeda
+- "Remove a última linha" → remover_linha, linha "ultima"
+- "Multiplica todos os valores por 2" → editar_coluna, coluna do tipo moeda, operacao multiplicar, fator 2
+
+RETORNE APENAS O JSON:"""
+
+        model_edicao = genai.GenerativeModel('gemini-2.5-flash')
+        
+        response = model_edicao.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=1000,
+            )
+        )
+        
+        if not response or not response.text:
+            return {
+                "sucesso": False,
+                "erro": "IA não retornou resposta"
+            }
+        
+        # Limpa resposta
+        resposta_texto = response.text.strip()
+        resposta_texto = resposta_texto.replace('```json', '').replace('```', '').strip()
+        
+        # Parse JSON
+        acao_dict = json.loads(resposta_texto)
+        
+        # Valida estrutura básica
+        if 'acao' not in acao_dict:
+            return {
+                "sucesso": False,
+                "erro": "Estrutura JSON inválida - falta 'acao'"
+            }
+        
+        # Valida tipo de ação
+        acoes_validas = {'adicionar_linha', 'editar_celula', 'remover_linha', 'editar_coluna', 'substituir_valor'}
+        if acao_dict['acao'] not in acoes_validas:
+            return {
+                "sucesso": False,
+                "erro": f"Ação inválida: {acao_dict['acao']} (deve ser: {', '.join(acoes_validas)})"
+            }
+        
+        # Valida parametros
+        if 'parametros' not in acao_dict or not isinstance(acao_dict['parametros'], dict):
+            return {
+                "sucesso": False,
+                "erro": "Estrutura JSON inválida - falta 'parametros' ou não é um objeto"
+            }
+        
+        logger.info(f"Ação de edição interpretada: {acao_dict['acao']}")
+        
+        return {
+            "sucesso": True,
+            "acao": acao_dict['acao'],
+            "parametros": acao_dict.get('parametros', {})
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao fazer parse do JSON: {e}")
+        return {
+            "sucesso": False,
+            "erro": f"Erro ao interpretar resposta da IA: {str(e)}"
+        }
+    except Exception as e:
+        logger.error(f"Erro ao interpretar edição: {e}")
         return {
             "sucesso": False,
             "erro": str(e)
