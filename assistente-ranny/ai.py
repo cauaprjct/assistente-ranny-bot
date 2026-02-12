@@ -776,12 +776,9 @@ REGRAS:
 
 4. dados_exemplo: 
    - Se a descrição incluir dados específicos, extraia TODAS as linhas fornecidas
-   - Identifique múltiplas linhas mesmo sem quebras de linha (ex: "05/01, A, 100Ativo10/01, B, 200Pendente" = 2 linhas)
+   - Identifique múltiplas linhas mesmo sem quebras de linha
+   - Cada linha de dados deve ser um array dentro de dados_exemplo
    - Se não houver dados específicos, crie 2-3 linhas de exemplo com valores realistas
-
-5. EXEMPLO DE MÚLTIPLAS LINHAS:
-   Descrição: "Colunas: Data, Produto, Valor, Status05/01, Produto A, 100.00, Ativo10/01, Produto B, 200.00, Pendente"
-   Resultado: "dados_exemplo": [["05/01", "Produto A", 100.00, "Ativo"], ["10/01", "Produto B", 200.00, "Pendente"]]
 
 EXEMPLO DE JSON VÁLIDO:
 {{
@@ -806,8 +803,8 @@ RETORNE APENAS O JSON:"""
         response = model_planilha.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=2000,
+                temperature=0.1,  # Mais determinístico
+                max_output_tokens=3000,  # Mais espaço para múltiplas linhas
             )
         )
         
@@ -825,16 +822,31 @@ RETORNE APENAS O JSON:"""
         import re
         resposta_texto = re.sub(r'//.*', '', resposta_texto)
         
+        # Remove possíveis textos antes/depois do JSON
+        # Procura pelo primeiro { e último }
+        inicio = resposta_texto.find('{')
+        fim = resposta_texto.rfind('}')
+        if inicio != -1 and fim != -1 and fim > inicio:
+            resposta_texto = resposta_texto[inicio:fim+1]
+        
         # Parse JSON
         try:
             estrutura = json.loads(resposta_texto)
         except json.JSONDecodeError as e:
-            logger.error(f"JSON inválido retornado pela IA: {resposta_texto[:200]}")
+            logger.error(f"JSON inválido retornado pela IA:")
+            logger.error(f"Resposta completa: {resposta_texto}")
             logger.error(f"Erro de parse: {e}")
-            return {
-                "sucesso": False,
-                "erro": f"IA retornou JSON inválido: {str(e)}"
-            }
+            
+            # Tenta usar json5 para parse mais tolerante
+            try:
+                import json5
+                estrutura = json5.loads(resposta_texto)
+                logger.info("JSON parseado com sucesso usando json5")
+            except Exception as e2:
+                return {
+                    "sucesso": False,
+                    "erro": f"IA retornou JSON inválido: {str(e)}"
+                }
         
         # Valida estrutura básica
         if 'colunas' not in estrutura or not isinstance(estrutura['colunas'], list):
