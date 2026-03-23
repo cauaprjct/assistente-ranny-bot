@@ -1,0 +1,18 @@
+Cria uma planilha de controle de investimentos pessoais com as colunas:
+
+Data Aplicação, Tipo Investimento, Instituição, Valor Aplicado, Taxa Rendimento, Vencimento, Valor Atual, Rentabilidade, Status
+
+Adiciona esses investimentos:
+
+05/01/2026, Tesouro Direto, Tesouro Nacional, 5000.00, 12.5%, 01/01/2027, 5625.00, 625.00, Ativo
+10/01/2026, CDB, Banco Inter, 3000.00, 110% CDI, 10/07/2026, 3165.00, 165.00, Ativo
+15/01/2026, LCI, Nubank, 2000.00, 95% CDI, 15/01/2027, 2190.00, 190.00, Ativo
+20/01/2026, Ações, XP Investimentos, 1500.00, Variável, N/A, 1680.00, 180.00, Ativo
+25/01/2026, Fundos, BTG Pactual, 4000.00, 8.5%, 25/01/2027, 4340.00, 340.00, Ativo
+01/02/2026, Poupança, Caixa Econômica, 1000.00, 6.17%, Livre, 1051.42, 51.42, Ativo
+05/02/2026, CDB, Banco Original, 2500.00, 115% CDI, 05/08/2026, 2643.75, 143.75, Ativo
+10/02/2026, Tesouro Direto, Tesouro Nacional, 3500.00, 11.8%, 01/01/2028, 3913.00, 413.00, Ativo
+
+Título: CONTROLE DE INVESTIMENTOS PESSOAIS - 2026
+
+Com linha de total somando Valor Aplicado, Valor Atual e Rentabilidade

@@ -1,0 +1,12 @@
+Cria planilha excel com:
+Data, Categoria, Descrição, Valor, Pagamento, Status
+01/02, Alimentação, Supermercado, 245.80, Débito, Pago
+03/02, Transporte, Uber, 28.50, PIX, Pago
+05/02, Lazer, Cinema, 65.00, Crédito, Pago
+07/02, Saúde, Farmácia, 89.90, Dinheiro, Pago
+10/02, Educação, Curso Udemy, 149.90, Crédito, Pago
+12/02, Moradia, Luz, 180.00, Débito, Pendente
+15/02, Alimentação, Restaurante, 45.00, PIX, Pago
+18/02, Transporte, Gasolina, 320.00, Débito, Pago
+20/02, Lazer, Netflix, 55.90, Crédito, Pago
+22/02, Outros, Presente, 200.00, Crédito, Pendente

@@ -173,8 +173,21 @@ def criar_proximo_lembrete_recorrente(lembrete: dict):
 
 # Documentos
 def add_documento(tipo: str, descricao: str, file_id: str, categoria: str,
-                  dados_extraidos: dict = None):
-    """Adiciona documento"""
+                  dados_extraidos: dict = None, message_id: int = None, topic_id: int = None):
+    """Adiciona documento com localização no Telegram
+    
+    Args:
+        tipo: MIME type do documento
+        descricao: Nome/descrição do documento
+        file_id: ID do arquivo no Telegram (para reenvio)
+        categoria: Categoria do documento
+        dados_extraidos: Dados extras extraídos pela IA
+        message_id: ID da mensagem no Telegram (opcional)
+        topic_id: ID do tópico onde o arquivo está (opcional)
+    
+    Returns:
+        Dict com id, descricao e categoria do documento
+    """
     # Salva dados extras no resumo como JSON
     resumo_completo = descricao
     if dados_extraidos:
@@ -190,11 +203,13 @@ def add_documento(tipo: str, descricao: str, file_id: str, categoria: str,
         categoria=categoria_lower,
         file_id=file_id,
         resumo=resumo_completo,
-        tags=[categoria_lower] if categoria_lower else None
+        tags=[categoria_lower] if categoria_lower else None,
+        message_id=message_id,
+        topic_id=topic_id
     )
     
     # Retorna um dict com id
-    return {'id': doc_id, 'descricao': descricao, 'categoria': categoria_lower}
+    return {'id': doc_id, 'descricao': descricao, 'categoria': categoria_lower, 'message_id': message_id, 'topic_id': topic_id}
 
 def buscar_documentos(termo: str = '', categoria: str = None, limit: int = 20):
     """Busca documentos no banco"""
@@ -220,7 +235,9 @@ def buscar_documentos(termo: str = '', categoria: str = None, limit: int = 20):
             'file_id': doc.get('file_id'),
             'tipo': doc.get('tipo_documento'),
             'resumo': doc.get('resumo'),
-            'created_at': doc.get('created_at')
+            'created_at': doc.get('created_at'),
+            'message_id': doc.get('message_id'),
+            'topic_id': doc.get('topic_id')
         })
     
     return result

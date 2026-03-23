@@ -96,9 +96,21 @@ def init_database():
             file_path TEXT,
             resumo TEXT,
             tags TEXT,
+            message_id INTEGER,
+            topic_id INTEGER,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Adiciona colunas message_id e topic_id se não existirem (para bancos existentes)
+    cursor.execute("PRAGMA table_info(documentos)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    if 'message_id' not in columns:
+        cursor.execute('ALTER TABLE documentos ADD COLUMN message_id INTEGER')
+    
+    if 'topic_id' not in columns:
+        cursor.execute('ALTER TABLE documentos ADD COLUMN topic_id INTEGER')
     
     conn.commit()
     conn.close()

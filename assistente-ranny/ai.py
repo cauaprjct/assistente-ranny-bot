@@ -8,6 +8,7 @@ from config import GEMINI_API_KEY, SYSTEM_PROMPT
 import database_adapter as db
 import logging
 import pdf_reader
+import conversation_memory
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,9 @@ model = genai.GenerativeModel(
     }
 )
 
-# Histórico de conversa por usuário
-conversation_history = {}
+# Cache em memória para compatibilidade (fallback)
+_conversation_cache = {}
+
 
 def get_context() -> str:
     """Monta contexto atual para a IA"""
@@ -65,19 +67,45 @@ def get_context() -> str:
     return "\n".join(context_parts) if context_parts else "Nenhum dado cadastrado ainda."
 
 
-async def get_response(user_id: int, message: str, image_data: bytes = None) -> str:
-    """Obtém resposta da IA"""
+async def get_response(
+    user_id: int, 
+    message: str, 
+    image_data: bytes = None,
+    chat_id: int = None,
+    topic_id: int = 0
+) -> str:
+    """Obtém resposta da IA com memória persistente
     
-    # Inicializa histórico
-    if user_id not in conversation_history:
-        conversation_history[user_id] = []
+    Args:
+        user_id: ID do usuário Telegram
+        message: Mensagem do usuário
+        image_data: Dados de imagem (opcional)
+        chat_id: ID do chat/grupo (para contexto por tópico)
+        topic_id: ID do tópico dentro do grupo
     
-    # Adiciona mensagem ao histórico
-    conversation_history[user_id].append(f"Ranny: {message}")
+    Returns:
+        Resposta da IA
+    """
+    # Valores padrão
+    if chat_id is None:
+        chat_id = user_id  # Chat privado = próprio user_id
     
-    # Mantém últimas 10 mensagens
-    if len(conversation_history[user_id]) > 10:
-        conversation_history[user_id] = conversation_history[user_id][-10:]
+    # Salva mensagem do usuário na memória persistente
+    conversation_memory.save_message(
+        user_id=user_id,
+        chat_id=chat_id,
+        topic_id=topic_id,
+        content=message,
+        role="user"
+    )
+    
+    # Recupera histórico da conversa (agora com limite de 50 mensagens)
+    history = conversation_memory.get_context_for_ai(
+        user_id=user_id,
+        chat_id=chat_id,
+        topic_id=topic_id,
+        max_messages=30  # Envia 30 mensagens para IA
+    )
     
     # Monta prompt
     context = get_context()
@@ -85,8 +113,12 @@ async def get_response(user_id: int, message: str, image_data: bytes = None) -> 
         context=context,
         date=datetime.now().strftime("%d/%m/%Y %H:%M")
     )
-    history = "\n".join(conversation_history[user_id])
-    full_prompt = f"{system}\n\nHISTÓRICO DA CONVERSA:\n{history}\n\nAssistente:"
+    
+    # Inclui histórico formatado
+    if history:
+        full_prompt = f"{system}\n\nHISTÓRICO DA CONVERSA:\n{history}\n\nAssistente:"
+    else:
+        full_prompt = f"{system}\n\nAssistente:"
     
     try:
         if image_data:
@@ -100,8 +132,14 @@ async def get_response(user_id: int, message: str, image_data: bytes = None) -> 
         
         ai_response = response.text.strip()
         
-        # Adiciona resposta ao histórico
-        conversation_history[user_id].append(f"Assistente: {ai_response}")
+        # Salva resposta na memória persistente
+        conversation_memory.save_message(
+            user_id=user_id,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            content=ai_response,
+            role="assistant"
+        )
         
         return ai_response
         
@@ -635,13 +673,16 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
             }
         
         # Valida cada dia
+        dias_fds = {'sexta', 'sabado', 'sábado', 'domingo'}
+        alertas = []
+
         for dia in dados['dias']:
             if not all(k in dia for k in ['dia', 'entregadores', 'chegaram_horario', 'entregas']):
                 return {
                     "sucesso": False,
                     "erro": f"Dia {dia.get('dia', '?')} com dados incompletos"
                 }
-            
+
             # Converte entregadores para lista se for número (compatibilidade)
             if isinstance(dia['entregadores'], int):
                 num_entregadores = dia['entregadores']
@@ -651,6 +692,34 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
                     "sucesso": False,
                     "erro": f"Dia {dia.get('dia', '?')}: 'entregadores' deve ser lista ou número"
                 }
+
+            # CORREÇÃO #4: Validação lógica dos dados
+            num_entregadores = len(dia['entregadores'])
+            chegaram_horario = dia.get('chegaram_horario', 0)
+            entregas = dia.get('entregas', 0)
+
+            # Valida entregadores
+            if num_entregadores <= 0:
+                alertas.append(f"Dia {dia.get('dia')}: número de entregadores inválido ({num_entregadores})")
+
+            # Valida chegaram_horario (não pode ser maior que entregadores)
+            if chegaram_horario > num_entregadores:
+                alertas.append(f"Dia {dia.get('dia')}: chegaram_horario ({chegaram_horario}) maior que entregadores ({num_entregadores}) - corrigido")
+                dia['chegaram_horario'] = min(chegaram_horario, num_entregadores)
+
+            # Valida entregas (deve ser positivo)
+            if entregas < 0:
+                alertas.append(f"Dia {dia.get('dia')}: entregas negativo ({entregas}) - corrigido para 0")
+                dia['entregas'] = 0
+
+            # Verifica se dia é FDS
+            dia_nome = dia.get('dia', '').lower()
+            is_fds = any(d in dia_nome for d in dias_fds) or '/' in dia_nome
+
+            # Para dias úteis, zera chegaram_horario (não é relevante)
+            if not is_fds and chegaram_horario > 0:
+                alertas.append(f"Dia {dia.get('dia')}: chegaram_horario zerado para dia útil")
+                dia['chegaram_horario'] = 0
         
         # Gera período se não tiver ou se for placeholder (apenas para semanal)
         if tipo_periodo == 'semanal' and ('periodo' not in dados or not dados['periodo'] or 'DD/MM' in dados.get('periodo', '')):
@@ -664,11 +733,12 @@ RETORNE APENAS O JSON (sem ```json, sem explicações):"""
             
             dados['periodo'] = f"Semana {segunda_anterior.strftime('%d/%m')} a {domingo_anterior.strftime('%d/%m')}"
         
-        logger.info(f"Dados de entregadores extraídos ({tipo_periodo}): {len(dados['dias'])} dias")
-        
+        logger.info(f"Dados de entregadores extraídos ({tipo_periodo}): {len(dados['dias'])} dias, {len(alertas)} alertas")
+
         return {
             "sucesso": True,
-            "dados": dados
+            "dados": dados,
+            "alertas": alertas  # CORREÇÃO #4: Inclui alertas no retorno
         }
         
     except json.JSONDecodeError as e:
@@ -1063,3 +1133,185 @@ RETORNE APENAS O JSON:"""
             "sucesso": False,
             "erro": str(e)
         }
+
+
+
+async def extrair_correcao_planilha(texto_correcao: str, dados_atuais: dict, tipo_periodo: str = 'semanal') -> dict:
+    """Extrai correção de dados de planilha de entregadores
+    
+    Args:
+        texto_correcao: Texto com a correção (ex: "terça teve 3 entregadores")
+        dados_atuais: Dados atuais da planilha
+        tipo_periodo: 'semanal' ou 'mensal'
+    
+    Returns:
+        Dicionário com estrutura:
+        {
+            "sucesso": True/False,
+            "dados_corrigidos": {...},  # Dados atualizados
+            "mudancas": ["segunda", "terça"],  # Dias que foram alterados
+            "erro": "mensagem" (se falhar)
+        }
+    """
+    try:
+        import json
+        
+        # Serializa dados atuais para o prompt
+        dados_json = json.dumps(dados_atuais, ensure_ascii=False, indent=2)
+        
+        prompt = f"""Você é um assistente que corrige dados de planilhas.
+
+DADOS ATUAIS DA PLANILHA:
+{dados_json}
+
+CORREÇÃO SOLICITADA:
+"{texto_correcao}"
+
+TAREFA:
+1. Identifique qual(is) dia(s) precisa(m) ser corrigido(s)
+2. Aplique a correção mantendo os outros dados inalterados
+3. Retorne APENAS um JSON válido (sem markdown, sem explicações)
+
+FORMATO DO JSON DE RESPOSTA:
+{{
+  "dias_alterados": ["segunda", "terça"],
+  "dados_corrigidos": {{
+    "periodo": "...",
+    "dias": [
+      {{"dia": "segunda", "entregadores": [...], "chegaram_horario": 0, "entregas": 20}},
+      ...
+    ]
+  }}
+}}
+
+REGRAS:
+1. Mantenha TODOS os dias, alterando apenas o(s) mencionado(s)
+2. Se a correção mencionar "entregadores", altere o campo "entregadores"
+3. Se mencionar "entregas", altere o campo "entregas"
+4. Se mencionar "horário" ou "chegaram", altere "chegaram_horario"
+5. Mantenha a estrutura exata dos dados atuais
+6. Use aspas duplas sempre
+7. Não adicione vírgulas após último item
+
+EXEMPLOS DE CORREÇÕES:
+- "terça teve 3 entregadores" → altera entregadores da terça
+- "segunda teve 25 entregas" → altera entregas da segunda
+- "sexta 2 chegaram no horário" → altera chegaram_horario da sexta
+
+RETORNE APENAS O JSON:"""
+
+        model_correcao = genai.GenerativeModel('gemini-2.5-flash')
+        
+        response = model_correcao.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=2000,
+            )
+        )
+        
+        if not response or not response.text:
+            return {
+                "sucesso": False,
+                "erro": "IA não retornou resposta"
+            }
+        
+        # Limpa resposta
+        resposta_texto = response.text.strip()
+        resposta_texto = resposta_texto.replace('```json', '').replace('```', '').strip()
+        
+        # Parse JSON
+        resultado = json.loads(resposta_texto)
+        
+        # Valida estrutura
+        if 'dados_corrigidos' not in resultado or 'dias_alterados' not in resultado:
+            return {
+                "sucesso": False,
+                "erro": "Estrutura de resposta inválida"
+            }
+        
+        dados_corrigidos = resultado['dados_corrigidos']
+        dias_alterados = resultado['dias_alterados']
+        
+        # Valida que manteve todos os dias
+        if len(dados_corrigidos.get('dias', [])) != len(dados_atuais.get('dias', [])):
+            return {
+                "sucesso": False,
+                "erro": "Número de dias alterado incorretamente"
+            }
+        
+        logger.info(f"Correção aplicada: {len(dias_alterados)} dia(s) alterado(s)")
+        
+        return {
+            "sucesso": True,
+            "dados_corrigidos": dados_corrigidos,
+            "mudancas": dias_alterados
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao fazer parse do JSON de correção: {e}")
+        return {
+            "sucesso": False,
+            "erro": f"Erro ao interpretar resposta da IA: {str(e)}"
+        }
+    except Exception as e:
+        logger.error(f"Erro ao processar correção: {e}")
+        return {
+            "sucesso": False,
+            "erro": str(e)
+        }
+
+
+async def extrair_variaveis_template(texto: str, template_nome: str, variaveis_necessarias: list) -> dict:
+    """Extrai variáveis de um texto para preencher template
+    
+    Args:
+        texto: Texto da mensagem do usuário
+        template_nome: Nome do template
+        variaveis_necessarias: Lista de variáveis que o template precisa
+    
+    Returns:
+        dict com variáveis extraídas ou dict vazio se não conseguiu
+    """
+    from datetime import datetime
+    
+    prompt = f"""Analise o texto abaixo e extraia as variáveis necessárias para o template "{template_nome}".
+
+Variáveis necessárias: {', '.join(variaveis_necessarias)}
+
+Texto do usuário:
+{texto}
+
+Retorne um JSON com as variáveis encontradas. Se uma variável não for encontrada, não inclua no JSON.
+Use datas no formato DD/MM/YYYY.
+
+Exemplo de resposta:
+{{"nome_entregador": "João Silva", "cpf": "123.456.789-00", "data_inicio": "01/02/2024"}}
+
+Responda APENAS com o JSON, sem explicações."""
+
+    try:
+        model = get_model()
+        response = model.generate_content(prompt)
+        
+        resposta_texto = response.text.strip()
+        
+        # Remove marcadores de código se presentes
+        if resposta_texto.startswith('```'):
+            resposta_texto = resposta_texto.split('\n', 1)[1]  # Remove primeira linha
+            resposta_texto = resposta_texto.rsplit('```', 1)[0]  # Remove último marcador
+        
+        resposta_texto = resposta_texto.strip()
+        
+        # Parse do JSON
+        variaveis = json.loads(resposta_texto)
+        
+        logger.info(f"Variáveis extraídas para template '{template_nome}': {variaveis}")
+        return variaveis
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao fazer parse do JSON de variáveis: {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"Erro ao extrair variáveis: {e}")
+        return {}

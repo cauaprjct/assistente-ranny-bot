@@ -1,0 +1,90 @@
+═══════════════════════════════════════════════════════════════
+  📁 MONITOR DE ARQUIVOS PARA TELEGRAM
+═══════════════════════════════════════════════════════════════
+
+O QUE FAZ?
+----------
+Envia automaticamente arquivos Word, Excel e PDF do notebook da Ranny
+para o Telegram quando ela salvar.
+
+
+INSTALAÇÃO (FAZER UMA VEZ SÓ)
+------------------------------
+
+1. INSTALAR PYTHON
+   - Baixe em: https://www.python.org/downloads/
+   - IMPORTANTE: Marque "Add Python to PATH" na instalação
+   - Clique em "Install Now"
+
+2. INSTALAR BIBLIOTECAS
+   - Aperte Win + R
+   - Digite: cmd
+   - Aperte Enter
+   - Digite: pip install python-telegram-bot python-dotenv
+   - Aguarde instalar (1-2 minutos)
+
+3. CONFIGURAR O .ENV
+   - Abra o arquivo ".env" com Bloco de Notas
+   - Coloque o token real do bot (substitua "AAH8xYourRealTokenHere")
+   - Salve e feche
+
+4. TESTAR
+   - Clique duas vezes em: iniciar_monitor_simples.py
+   - Deve aparecer: "✅ Monitor iniciado com sucesso!"
+   - Salve um arquivo Word no Desktop
+   - Veja se aparece no Telegram em até 30 segundos
+
+5. AUTOMATIZAR (para rodar sempre)
+   - Clique duas vezes em: instalar_monitor_simples.py
+   - Pronto! Agora vai rodar sozinho quando ligar o notebook
+
+
+COMANDOS ÚTEIS
+--------------
+• iniciar_monitor_simples.py  → Ligar o monitor
+• parar_monitor_simples.py    → Desligar o monitor
+• status_monitor_simples.py   → Ver se está rodando
+
+
+PASTAS MONITORADAS
+------------------
+O monitor vigia estas pastas:
+• C:\Users\[Nome]\Documents
+• C:\Users\[Nome]\Desktop
+
+Qualquer arquivo .docx, .xlsx ou .pdf salvo nessas pastas será
+enviado automaticamente para o Telegram.
+
+
+ARQUIVOS ENVIADOS
+-----------------
+• Apenas arquivos modificados nas últimas 24 horas
+• Não envia arquivos temporários (que começam com ~$)
+• Não envia o mesmo arquivo duas vezes (usa hash MD5)
+• Limite de 50MB por arquivo
+
+
+LOGS
+----
+Para ver o que o monitor está fazendo:
+• Abra o arquivo: monitor_simples.log
+
+
+PROBLEMAS?
+----------
+"Python não é reconhecido"
+→ Reinstale o Python marcando "Add to PATH"
+
+"Módulo telegram não encontrado"
+→ Rode: pip install python-telegram-bot
+
+"BOT_TOKEN não configurado"
+→ Verifique se o arquivo .env está correto
+
+Monitor não envia arquivos
+→ Verifique o arquivo monitor_simples.log
+
+
+═══════════════════════════════════════════════════════════════
+Dúvidas? Chame o desenvolvedor!
+═══════════════════════════════════════════════════════════════

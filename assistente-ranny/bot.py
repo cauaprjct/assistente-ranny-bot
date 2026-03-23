@@ -8,7 +8,9 @@ import sys
 import asyncio
 import logging
 import html
+import re
 from datetime import datetime
+from typing import Optional
 from dotenv import load_dotenv
 from telegram import Update, InputFile
 from telegram.ext import (
@@ -29,7 +31,9 @@ import scheduler
 import jobs
 import pdf_reader
 import pdf_tools
+import pdf_templates
 import date_parser
+import docx_templates
 
 load_dotenv()
 
@@ -95,6 +99,133 @@ PALAVRAS_CHAVE_PESSOAL = {
     'conta', 'contas', 'pagamento', 'pagamentos',
     'salário', 'salario', 'salários', 'salarios'
 }
+
+# OTIMIZAÇÃO #2: Detectar saudações e respostas simples (sem IA)
+SAUDACOES = {
+    'oi', 'olá', 'ola', 'eai', 'ei', 'hey', 'eae', 'éaí', 'eaí',
+    'bom dia', 'boa tarde', 'boa noite', 'boa manhã', 'boa noite',
+    'como vai', 'como está', 'como vai você', 'td bem', 'tá bem',
+    'olá!', 'oi!', 'ola!'
+}
+
+RESPOSTAS_SIMPLES = {
+    'ok', 'ok!', 'sim', 'sim!', 'não', 'nao', 'não!', 'nao!',
+    'obrigado', 'obrigada', 'valeu', 'thanks', 'muito obrigado', 'muito obrigada',
+    'blz', 'beleza', 'de boa', 'de boa!',
+    'show', 'show!', 'legal', 'legal!', 'perfeito', 'perfeito!',
+    'entendi', 'entendi!', 'cé', 'ce', 'de boa',
+    'com certeza', 'claro', 'claro!', 'com certeza!',
+    'good', 'great', 'nice', 'thanks!', 'thank you',
+    ':)', ':-)', ':d', ':-d', '👍', '👍🏻', '👍🏼'
+}
+
+RESPOSTAS_SIMPLES_IA = {
+    'obrigado', 'obrigada', 'valeu', 'thanks', 'muito obrigado', 'muito obrigada',
+    'show', 'show!', 'legal', 'legal!', 'perfeito', 'perfeito!',
+    'blz', 'beleza', 'de boa', 'de boa!', 'entendi', 'entendi!'
+}
+
+# Palavras-chave para detectar documentos Word pessoais
+PALAVRAS_CHAVE_DOCX_PESSOAL = {
+    'pessoal', 'pessoais', 'particular', 'particulares',
+    'anotação', 'anotacao', 'anotações', 'anotacoes',
+    'lembrete', 'lembretes', 'agenda',
+    'tarefa', 'tarefas', 'lista', 'listas',
+    'recado', 'recados', 'aviso', 'avisos',
+    'memorando', 'memo', 'nota',
+    'texto', 'rascunho', 'rascunhos',
+    'ideia', 'ideias', 'idéia', 'idéias',
+    'planejamento', 'plano', 'planos',
+    'meta', 'metas', 'objetivo', 'objetivos'
+}
+
+# OTIMIZAÇÃO #1: Palavras-chave para classificação sem IA
+CATEGORIA_KEYWORDS = {
+    'financeiro': {
+        'boleto', 'boletos', 'fatura', 'faturas', 'pagamento', 'pagamentos',
+        'conta', 'contas', 'luz', 'água', 'agua', 'gás', 'gas', 'internet',
+        'telefone', 'aluguel', ' condomínio', 'condominio',
+        'recibo', 'recibos', 'invoice', 'nota fiscal', 'nfse',
+        'extrato', 'extratos', 'transferência', 'transferencia',
+        'depósito', 'deposito', 'saque', 'tarifa', 'juros', 'multa',
+        'fgts', 'inss', 'das', 'darf', 'gps', 'iss',
+        'parcela', 'parcelas', 'financiamento', 'empréstimo', 'emprestimo',
+        'cpfl', 'light', 'claro', 'vivo', 'oi telefonia'
+    },
+    'empresa': {
+        'nota fiscal', 'nfse', 'nota', 'fiscal', 'tomador', 'prestador',
+        'cnpj', 'ie', 'inscrição estadual', 'razão social', 'nome fantasia',
+        'Alvará', 'alvara', 'licença', 'licenca', 'habite-se', 'habitese',
+        'certificado', 'certidão', 'certidao', 'junta comercial',
+        'sintegra', 'nfce', 'sat', ' ECF', 'NF', 'NFCe',
+        'cfe', ' MDFe', 'cte', 'conhecimento de transporte'
+    },
+    'funcionarios': {
+        'funcionário', 'funcionario', 'funcionários', 'funcionarios',
+        'contrato', 'admissão', 'admissao', 'demissão', 'demissao',
+        'folha', 'folha de pagamento', 'salário', 'salario', 'salários',
+        'adiantamento', 'vale', 'vale-transporte', 'vale refeição', 'vr',
+        'décimo', 'decimo', 'ferias', 'férias', '13º', 'décimo terceiro',
+        'aso', 'atestado', 'exame médico', 'exame clinico', 'clínico',
+        'advertência', 'advertencia', 'suspensão', 'suspensao',
+        'recisão', 'rescisao', 'TRCT', 'fgts', 'multa fgts',
+        'colaborador', 'colaboradores', 'empregado', 'empregados'
+    },
+    'juridico': {
+        'processo', 'processos', 'audiencia', 'audiência', 'intimação', 'intimacao',
+        'petição', 'peticao', 'advogado', 'advogada', 'jurídico', 'juridico',
+        'tribunal', 'vara', 'juízo', 'juizo', 'escrivão', 'escrivao',
+        'ré', 'reu', 'autor', 'réu', 'apelação', 'apelacao', 'recurso',
+        'sentença', 'sentenca', 'decisão', 'decisao', 'acórdão', 'acordao',
+        'execução', 'execucao', 'cumprimento', 'penhora', 'arrematação',
+        'cível', 'civil', 'trabalhista', 'criminal', 'tributário', 'tributario'
+    },
+    'pessoal': {
+        'cpf', 'rg', 'cnh', 'título', 'titulo', 'eleitor',
+        'certidão', 'certidao', 'nascimento', 'casamento', 'óbito', 'obito',
+        'endereço', 'endereco', 'telefone', 'e-mail', 'email',
+        'visto', 'passaporte', 'vacina', 'vacinação',
+        'receita', 'receitas', 'médico', 'medico', 'dentista',
+        'escola', 'universidade', 'curso', 'diploma',
+        'cpf', 'rg', 'cnh', 'título', 'titulo', 'eleitor',
+        'carteira', 'identidade', 'reservista', 'antt'
+    },
+    'manutencao': {
+        'manutenção', 'manutencao', 'reparo', 'reparos', 'conserto', 'consertos',
+        'defeito', 'defeitos', 'problema', 'problemas', 'quebrou', 'quebrou',
+        'trocou', 'troca', 'substituição', 'substituicao',
+        'equipamento', 'máquina', 'maquina', 'aparelho', 'aparelhos',
+        'instalação', 'instalacao', 'montagem', 'configuration', 'configuração'
+    }
+}
+
+# OTIMIZAÇÃO #1: Função de classificação por keywords
+def classify_by_keywords(texto: str) -> str:
+    """Classifica documento por palavras-chave (sem IA)
+
+    Args:
+        texto: Texto para classificar
+
+    Returns:
+        Categoria mais provável ou 'outros'
+    """
+    if not texto:
+        return 'outros'
+
+    texto_lower = texto.lower()
+
+    # Conta matches por categoria
+    matches = {}
+    for categoria, keywords in CATEGORIA_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw in texto_lower)
+        if count > 0:
+            matches[categoria] = count
+
+    if not matches:
+        return 'outros'
+
+    # Retorna categoria com mais matches
+    return max(matches, key=matches.get)
 
 
 # ============ FUNÇÕES AUXILIARES ============
@@ -265,6 +396,35 @@ def is_planilha_pessoal(texto: str, titulo: str = "") -> bool:
     return tem_palavra_pessoal and not tem_palavra_pizzaria
 
 
+def is_documento_pessoal(texto: str, titulo: str = "") -> bool:
+    """Detecta se um documento Word é pessoal (não relacionado à pizzaria)
+    
+    Args:
+        texto: Texto da solicitação original
+        titulo: Título do documento (opcional)
+    
+    Returns:
+        True se for documento pessoal, False caso contrário
+    """
+    texto_completo = f"{texto} {titulo}".lower()
+    
+    # Verifica se contém palavras-chave pessoais de documento
+    tem_palavra_pessoal = any(palavra in texto_completo for palavra in PALAVRAS_CHAVE_DOCX_PESSOAL)
+    
+    # Verifica se NÃO contém palavras relacionadas à pizzaria/operacional
+    palavras_pizzaria = {
+        'entregador', 'entregadores', 'motoboy', 'motoboys',
+        'delivery', 'entregas', 'entrega',
+        'pizzaria', 'pizza', 'grn',
+        'operacional', 'operação', 'operacao',
+        'cardápio', 'cardapio', 'escala'
+    }
+    tem_palavra_pizzaria = any(palavra in texto_completo for palavra in palavras_pizzaria)
+    
+    # É pessoal se tem palavra pessoal E não tem palavra de pizzaria
+    return tem_palavra_pessoal and not tem_palavra_pizzaria
+
+
 async def buscar_topico_por_nome(context: ContextTypes.DEFAULT_TYPE, nome_topico: str) -> int:
     """
     Busca um tópico existente no grupo pelo nome.
@@ -393,10 +553,15 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Analisa o arquivo
         dados = await ai.analyze_file(file_bytes, file_name, caption)
-        
-        # Classifica categoria
+
+        # OTIMIZAÇÃO #1: Classifica por keywords PRIMEIRO (sem IA)
         texto_classificacao = dados.get('descricao', '') + ' ' + caption
-        categoria = await ai.classify_document(texto_classificacao)
+        categoria = classify_by_keywords(texto_classificacao)
+
+        # Só chama IA se keywords não conseguiu classificar
+        if categoria == 'outros':
+            logger.info("classify_by_keywords não conseguiu classificar, usando IA...")
+            categoria = await ai.classify_document(texto_classificacao)
         
         # Salva no banco
         doc_record = db.add_documento(
@@ -453,10 +618,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Analisa com Gemini Vision
         dados = await ai.analyze_image(file_bytes, caption)
-        
-        # Classifica categoria
+
+        # OTIMIZAÇÃO #1: Classifica por keywords PRIMEIRO (sem IA)
         texto_classificacao = dados.get('descricao', '') + ' ' + caption
-        categoria = await ai.classify_document(texto_classificacao)
+        categoria = classify_by_keywords(texto_classificacao)
+
+        # Só chama IA se keywords não conseguiu classificar
+        if categoria == 'outros':
+            logger.info("classify_by_keywords não conseguiu classificar, usando IA...")
+            categoria = await ai.classify_document(texto_classificacao)
         
         # Salva no banco
         doc_record = db.add_documento(
@@ -524,9 +694,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if await handle_planilha_entregadores(update, context, text):
             return
         
-        # ===== BUSCA DE DOCUMENTOS ===== (DESABILITADO - grupo organizado)
-        # if await handle_busca_documentos(update, context, text):
-        #     return
+        # ===== BUSCA DE DOCUMENTOS =====
+        if await handle_busca_documentos(update, context, text):
+            return
         
         # ===== REENVIO DE DOCUMENTO =====
         if await handle_reenvio_documento(update, context, text, user_id):
@@ -544,10 +714,49 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if await handle_criar_planilha_personalizada(update, context, text):
             return
         
+        # ===== TEMPLATES DE DOCUMENTOS =====
+        if await handle_templates(update, context, text):
+            return
+        
+        # ===== TEMPLATES PDF COM CONFIRMAÇÃO =====
+        if await handle_pdf_templates(update, context, text):
+            return
+        
+        # ===== DOCUMENTOS WORD COM CONTEXTO =====
+        if await handle_docx_contexto(update, context, text):
+            return
+        
         # ===== CRIAÇÃO DE ARQUIVOS (genérico) =====
         if await handle_criar_arquivo(update, context, text):
             return
-        
+
+        # ===== OTIMIZAÇÃO #2: DETECÇÃO DE SAUDAÇÕES E RESPOSTAS SIMPLES =====
+        text_lower = text.lower().strip()
+
+        # Detecta saudação (resposta rápida sem IA)
+        if text_lower in SAUDACOES or any(text_lower.startswith(s + ' ') for s in ['oi ', 'olá ', 'ola ', 'eai ', 'bom dia ', 'boa tarde ', 'boa noite ']):
+            respostas_saudacao = [
+                "Oi! Como posso ajudar? 😊",
+                "Olá! Em que posso ajudar?",
+                "Oi! O que precisa?",
+                "Olá! Como posso te ajudar hoje?",
+                "Oi Ranny! Tudo bem? 😊"
+            ]
+            import random
+            await message.reply_text(random.choice(respostas_saudacao))
+            return
+
+        # Detecta respostas simples (não chama IA, apenas confirma)
+        if text_lower in RESPOSTAS_SIMPLES:
+            # Para algumas respostas, mostra confirmação breve
+            if text_lower in ['sim', 'não', 'nao', 'ok', 'ok!']:
+                return  # Só retorna sem resposta
+            elif text_lower in RESPOSTAS_SIMPLES_IA:
+                await message.reply_text("👍")
+                return
+            else:
+                return  # Não responde para emojis, etc.
+
         # ===== CONVERSA COM IA =====
         await message.reply_text("⏳ Pensando...")
         resposta = await ai.get_response(user_id, text)
@@ -736,60 +945,84 @@ async def handle_vencimentos(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 
 async def buscar_documentos_telegram(context: ContextTypes.DEFAULT_TYPE, termo: str) -> list:
-    """Busca documentos diretamente nos tópicos do Telegram"""
+    """Busca documentos no banco de dados indexado
     
-    documentos_encontrados = []
-    termo_lower = termo.lower()
+    NOTA: A API do Bot do Telegram não permite buscar mensagens diretamente.
+    Esta função busca no banco de dados que foi indexado previamente.
+    """
     
-    # Lista de tópicos para buscar
-    topicos = [
-        ('EMPRESA', config.TOPICS.get('empresa')),
-        ('FINANCEIRO', config.TOPICS.get('financeiro')),
-        ('FUNCIONARIOS', config.TOPICS.get('funcionarios')),
-        ('JURIDICO', config.TOPICS.get('juridico')),
-        ('PESSOAL', config.TOPICS.get('pessoal')),
-        ('OPERACIONAL', config.TOPICS.get('operacional')),
-        ('MIDIA', config.TOPICS.get('midia')),
-        ('CONTROLES', config.TOPICS.get('controles')),
-        ('OUTROS', config.TOPICS.get('outros')),
+    # Busca no banco de dados
+    documentos = db.buscar_documentos(termo, limit=10)
+    
+    logger.info(f"Busca por '{termo}': {len(documentos)} resultados no banco")
+    
+    return documentos
+
+
+# ===== FUNÇÃO DE BUSCA DE DOCUMENTOS =====
+async def handle_busca_documentos(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """Busca documentos no banco e mostra resultados para o usuário"""
+    
+    # Detecta intenção de busca
+    termo = detectar_busca_documento(text)
+    if not termo:
+        return False
+    
+    logger.info(f"Buscando: '{termo}'")
+    
+    # Busca no banco de dados
+    documentos = db.buscar_documentos(termo, limit=5)
+    
+    if not documentos:
+        await update.message.reply_text(
+            f"Não encontrei nenhum arquivo com '{termo}'",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return True
+    
+    # Monta resposta com resultados
+    resposta = f"Encontrei {len(documentos)} arquivo(s) para '{termo}':\n\n"
+    
+    for i, doc in enumerate(documentos, 1):
+        descricao = doc.get('descricao', 'Documento')
+        categoria = doc.get('categoria', 'outros')
+        resposta += f"{i}. **{descricao}**\n"
+        resposta += f"   Categoria: {categoria.title()}\n\n"
+    
+    resposta += "\nResponda com o número (ex: 'manda o 1') para receber o arquivo."
+    
+    # Salva resultados para reenvio posterior
+    user_search_results[update.effective_user.id] = documentos
+    
+    await update.message.reply_text(resposta, parse_mode=ParseMode.MARKDOWN)
+    return True
+
+
+def detectar_busca_documento(text: str) -> str:
+    """Detecta se o usuário quer buscar um documento e retorna o termo de busca"""
+    
+    text_lower = text.lower().strip()
+    
+    # Padrões de busca
+    padroes = [
+        r'cad[êe]\s+(?:o\s+)?(.+)',
+        r'(?:onde\s+(?:est[aá]|ta)\s+)?(?:o\s+)?(.+)',
+        r'(?:procura|busca|acha|encontra)\s+(?:o\s+)?(.+)',
+        r'me\s+(?:acha|procura|busca|encontra)\s+(?:o\s+)?(.+)',
+        r'qual\s+(?:é\s+)?o\s+(.+)',
+        r'tem\s+(?:o\s+)?(.+)',
     ]
     
-    try:
-        for categoria, topic_id in topicos:
-            if not topic_id:
-                continue
-            
-            # Busca mensagens no tópico (últimas 100)
-            try:
-                # Pega o histórico de mensagens do tópico
-                messages = []
-                offset = 0
-                
-                # Busca até 100 mensagens por tópico
-                for _ in range(5):  # 5 páginas de 20 = 100 mensagens
-                    chat_history = await context.bot.get_chat(config.GROUP_ID)
-                    # Nota: A API do Telegram não permite buscar por tópico diretamente
-                    # Vamos usar uma abordagem diferente
-                    break
-                
-            except Exception as e:
-                logger.error(f"Erro ao buscar no tópico {categoria}: {e}")
-                continue
+    for padrao in padroes:
+        match = re.search(padrao, text_lower)
+        if match:
+            termo = match.group(1).strip()
+            # Remove palavras comuns
+            termo = re.sub(r'\b(arquivo|documento|planilha|pdf|xlsx)\b', '', termo).strip()
+            if termo and len(termo) > 2:
+                return termo
     
-    except Exception as e:
-        logger.error(f"Erro geral na busca: {e}")
-    
-    return documentos_encontrados
-
-
-# ===== FUNÇÃO DE BUSCA DE DOCUMENTOS DESABILITADA =====
-# Removida porque o grupo está organizado em tópicos
-# e não há necessidade de busca
-"""
-async def handle_busca_documentos(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
-    # Função comentada - busca desabilitada
-    return False
-"""
+    return None
 
 
 async def handle_reenvio_documento(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, user_id: int) -> bool:
@@ -912,7 +1145,6 @@ async def handle_criar_arquivo(update: Update, context: ContextTypes.DEFAULT_TYP
         # === PDF ===
         if 'pdf' in text_lower:
             # Extrai conteúdo após "com:"
-            import re
             match = re.search(r'(?:cria|criar|gera|gerar)\s+(?:um\s+)?pdf\s+com[:\s]+(.+)', text, re.IGNORECASE | re.DOTALL)
             
             if match:
@@ -942,7 +1174,6 @@ async def handle_criar_arquivo(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # === WORD ===
         elif 'word' in text_lower or 'docx' in text_lower or 'documento' in text_lower:
-            import re
             match = re.search(r'(?:cria|criar|gera|gerar)\s+(?:um\s+)?(?:word|docx|documento)\s+com[:\s]+(.+)', text, re.IGNORECASE | re.DOTALL)
             
             if match:
@@ -969,7 +1200,6 @@ async def handle_criar_arquivo(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # === EXCEL ===
         elif 'excel' in text_lower or 'xlsx' in text_lower or 'planilha' in text_lower:
-            import re
             match = re.search(r'(?:cria|criar|gera|gerar)\s+(?:um[a]?\s+)?(?:excel|xlsx|planilha)\s+com[:\s]+(.+)', text, re.IGNORECASE | re.DOTALL)
             
             if match:
@@ -1009,14 +1239,32 @@ async def handle_ler_arquivo(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 texto = resultado['texto'][:1000]  # Limita a 1000 caracteres
                 num_paragrafos = resultado['num_paragrafos']
                 num_tabelas = resultado['num_tabelas']
-                
+                num_headers = resultado.get('num_headers', 0)
+                num_footers = resultado.get('num_footers', 0)
+
                 resposta = f"📄 *Conteúdo do documento:*\n\n"
-                resposta += f"📝 {num_paragrafos} parágrafos, {num_tabelas} tabelas\n\n"
+                resposta += f"📝 {num_paragrafos} parágrafos, {num_tabelas} tabelas"
+
+                # CORREÇÃO #4: Mostra info de headers/footers se existirem
+                if num_headers > 0:
+                    resposta += f", {num_headers} header(s)"
+                if num_footers > 0:
+                    resposta += f", {num_footers} footer(s)"
+
+                resposta += "\n\n"
+
+                # CORREÇÃO #4: Mostra headers se existirem
+                if num_headers > 0 and resultado.get('headers'):
+                    resposta += "📌 *Headers:*\n"
+                    for h in resultado['headers'][:3]:  # Limita a 3
+                        resposta += f"  • {h[:100]}\n"
+                    resposta += "\n"
+
                 resposta += f"```\n{texto}\n```"
-                
+
                 if len(resultado['texto']) > 1000:
                     resposta += f"\n\n_...conteúdo truncado_"
-                
+
                 await update.message.reply_text(resposta, parse_mode=ParseMode.MARKDOWN)
             else:
                 await update.message.reply_text("❌ Erro ao ler documento")
@@ -1056,8 +1304,6 @@ async def handle_ler_arquivo(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 async def handle_editar_arquivo(update: Update, context: ContextTypes.DEFAULT_TYPE, file_bytes: bytes, file_name: str, caption: str):
     """Edita arquivo DOCX ou XLSX"""
-    
-    import re
     
     try:
         caption_lower = caption.lower()
@@ -1421,10 +1667,111 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                 "Se quiser criar outra, descreva a semana novamente! 😊"
             )
             context.user_data.pop('planilha_pendente', None)
+            context.user_data.pop('texto_original_planilha', None)
             return True
         
-        # Se não é confirmação nem negação, ignora (pode ser outra conversa)
-        return False
+        else:
+            # NÃO É CONFIRMAÇÃO NEM NEGAÇÃO - Pode ser uma correção!
+            # Tenta processar como correção dos dados
+            await update.message.reply_text("⏳ Entendendo sua correção...")
+            
+            try:
+                dados_atuais = context.user_data['planilha_pendente']
+                tipo_periodo = dados_atuais.get('tipo_periodo', 'semanal')
+                
+                # Tenta extrair a correção usando IA
+                resultado_correcao = await ai.extrair_correcao_planilha(text, dados_atuais, tipo_periodo)
+                
+                if resultado_correcao['sucesso']:
+                    # Aplica a correção
+                    dados_corrigidos = resultado_correcao['dados_corrigidos']
+                    mudancas = resultado_correcao['mudancas']
+                    
+                    # Recalcula totais
+                    total_entregas = 0
+                    total_custo = 0
+                    resumo_dias = []
+                    
+                    for dia_info in dados_corrigidos['dias']:
+                        dia = dia_info['dia']
+                        entregadores_lista = dia_info['entregadores']
+                        
+                        if isinstance(entregadores_lista, list):
+                            num_entregadores = len(entregadores_lista)
+                        else:
+                            num_entregadores = entregadores_lista
+                        
+                        chegaram_horario = dia_info['chegaram_horario']
+                        entregas = dia_info['entregas']
+                        
+                        custos = calcular_custo_dia(dia, num_entregadores, chegaram_horario, entregas)
+                        
+                        total_entregas += entregas
+                        total_custo += custos['total']
+                        
+                        dia_display = dia.capitalize() if '/' not in dia else dia
+                        
+                        # Marca dias que foram alterados
+                        marcador = " ← CORRIGIDO" if dia in mudancas else ""
+                        
+                        if custos['is_fds'] and chegaram_horario > 0:
+                            resumo_dias.append(
+                                f"• {dia_display}: {num_entregadores} entregadores, "
+                                f"{chegaram_horario} no horário, {entregas} entregas = R$ {custos['total']:,.2f}{marcador}"
+                            )
+                        else:
+                            resumo_dias.append(
+                                f"• {dia_display}: {num_entregadores} entregadores, "
+                                f"{entregas} entregas = R$ {custos['total']:,.2f}{marcador}"
+                            )
+                    
+                    # Monta mensagem com dados corrigidos
+                    tipo_display = "SEMANA" if tipo_periodo == 'semanal' else "MÊS"
+                    mensagem_corrigida = (
+                        f"✅ *Correção aplicada!*\n\n"
+                        f"📊 *Planilha atualizada:*\n\n"
+                        f"*{dados_corrigidos.get('periodo', tipo_display)}*\n\n"
+                        f"{chr(10).join(resumo_dias)}\n\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"💰 *TOTAL: R$ {total_custo:,.2f}*\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"*Agora está correto?*\n"
+                        f"• Digite *'sim'* para confirmar\n"
+                        f"• Digite *'não'* para cancelar\n"
+                        f"• Ou me diga outra correção"
+                    )
+                    
+                    mensagem_corrigida = mensagem_corrigida.replace(',', 'X').replace('.', ',').replace('X', '.')
+                    
+                    await update.message.reply_text(mensagem_corrigida, parse_mode=ParseMode.MARKDOWN)
+                    
+                    # Atualiza dados pendentes
+                    context.user_data['planilha_pendente'] = dados_corrigidos
+                    
+                    return True
+                else:
+                    # Não conseguiu entender a correção
+                    await update.message.reply_text(
+                        f"❌ Não consegui entender a correção.\n\n"
+                        f"Tente ser mais específico, por exemplo:\n"
+                        f"• \"segunda teve 4 entregadores\"\n"
+                        f"• \"terça teve 25 entregas\"\n"
+                        f"• \"sexta 2 chegaram no horário\"\n\n"
+                        f"Ou responda:\n"
+                        f"• *'sim'* para confirmar como está\n"
+                        f"• *'não'* para cancelar"
+                    )
+                    return True
+                    
+            except Exception as e:
+                logger.error(f"❌ Erro ao processar correção: {e}")
+                await update.message.reply_text(
+                    f"❌ Erro ao processar correção.\n\n"
+                    f"Responda:\n"
+                    f"• *'sim'* para confirmar como está\n"
+                    f"• *'não'* para cancelar e começar de novo"
+                )
+                return True
     
     # ===== DETECTAR PEDIDO DE NOVA PLANILHA =====
     # Otimizado: conta palavras-chave em uma única passagem
@@ -1459,9 +1806,11 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     return True
                 
                 dados = resultado['dados']
-                
-                # Valida dados e obtém alertas
-                alertas = valida_dados_entregadores(dados, tipo_periodo)
+                alertas_ia = resultado.get('alertas', [])  # CORREÇÃO #4: Pega alertas da IA
+
+                # Valida dados e obtém alertas (combina com alertas da IA)
+                alertas_validacao = valida_dados_entregadores(dados, tipo_periodo)
+                alertas = alertas_ia + alertas_validacao  # Une alertas
                 
                 # Calcula totais usando função auxiliar
                 total_entregas = 0
@@ -1521,7 +1870,13 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                     for alerta in alertas:
                         mensagem_confirmacao += f"• {alerta}\n"
                 
-                mensagem_confirmacao += f"\nEstá correto? *(responda 'sim' ou 'confirma')*"
+                mensagem_confirmacao += (
+                    f"\n*Está correto?*\n"
+                    f"• Digite *'sim'* para confirmar\n"
+                    f"• Digite *'não'* para cancelar\n"
+                    f"• Ou me diga o que precisa corrigir\n"
+                    f"  _(ex: \"terça teve 3 entregadores\")_"
+                )
                 
                 # Formata valores monetários
                 mensagem_confirmacao = mensagem_confirmacao.replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -1531,6 +1886,7 @@ async def handle_planilha_entregadores(update: Update, context: ContextTypes.DEF
                 # Salva dados pendentes com tipo de período
                 dados['tipo_periodo'] = tipo_periodo
                 context.user_data['planilha_pendente'] = dados
+                context.user_data['texto_original_planilha'] = text  # Salva texto original para referência
                 
                 return True
                 
@@ -1728,9 +2084,112 @@ async def handle_criar_planilha_personalizada(update: Update, context: ContextTy
     return False
 
 
+def interpretar_edicao_simples(text: str, estrutura: dict) -> Optional[dict]:
+    """Interpreta comandos simples de edição de planilha via regex (sem IA)
+
+    Args:
+        text: Texto do usuário
+        estrutura: Estrutura da planilha
+
+    Returns:
+        dict com 'sucesso', 'acao', 'parametros' ou None se não casou com nenhum padrão
+    """
+    import re
+
+    text_lower = text.lower().strip()
+
+    # Padrão 1: "adiciona: valor1, valor2, ..." ou "adiciona valor1, valor2"
+    match = re.match(r'^(?:adiciona|add|adc)[:\s]+(.+)', text_lower)
+    if match:
+        valores_texto = match.group(1)
+        # Divide por vírgula e limpa
+        valores = [v.strip() for v in valores_texto.split(',')]
+        # Tenta converter para números
+        valores_convertidos = []
+        for v in valores:
+            try:
+                # Tenta converter para número (substitui R$ , por nada)
+                v_clean = re.sub(r'[R$\s]', '', v)
+                if '.' in v_clean:
+                    valores_convertidos.append(float(v_clean))
+                else:
+                    valores_convertidos.append(int(v_clean))
+            except ValueError:
+                valores_convertidos.append(v)
+
+        return {
+            'sucesso': True,
+            'acao': 'adicionar_linha',
+            'parametros': {'valores': valores_convertidos}
+        }
+
+    # Padrão 2: "substitui X por Y" ou "troca X por Y" ou "muda X para Y"
+    match = re.match(r'^(?:substitui|troca|muda|mudou)\s+(.+?)\s+(?:por|para)\s+(.+)', text_lower)
+    if match:
+        valor_antigo = match.group(1).strip()
+        valor_novo = match.group(2).strip()
+
+        # Tenta converter para número
+        try:
+            valor_novo_clean = re.sub(r'[R$\s]', '', valor_novo)
+            if '.' in valor_novo_clean:
+                valor_novo_convertido = float(valor_novo_clean)
+            else:
+                valor_novo_convertido = int(valor_novo_clean)
+        except ValueError:
+            valor_novo_convertido = valor_novo
+
+        return {
+            'sucesso': True,
+            'acao': 'substituir_valor',
+            'parametros': {
+                'valor_antigo': valor_antigo,
+                'valor_novo': valor_novo_convertido
+            }
+        }
+
+    # Padrão 3: "remove linha X" ou "remover linha X" ou "apaga linha X"
+    match = re.match(r'^(?:remove(?:r)?|apaga(?:r)?|deleta(?:r)?)\s+(?:linha\s+)?(\d+)', text_lower)
+    if match:
+        numero_linha = int(match.group(1))
+        return {
+            'sucesso': True,
+            'acao': 'remover_linha',
+            'parametros': {'numero_linha': numero_linha}
+        }
+
+    # Padrão 4: "edita linha X: valor1, valor2, ..."
+    match = re.match(r'^(?:edita|altera|modifica)\s+linha\s+(\d+)[:\s]+(.+)', text_lower)
+    if match:
+        numero_linha = int(match.group(1))
+        valores_texto = match.group(2)
+        valores = [v.strip() for v in valores_texto.split(',')]
+        valores_convertidos = []
+        for v in valores:
+            try:
+                v_clean = re.sub(r'[R$\s]', '', v)
+                if '.' in v_clean:
+                    valores_convertidos.append(float(v_clean))
+                else:
+                    valores_convertidos.append(int(v_clean))
+            except ValueError:
+                valores_convertidos.append(v)
+
+        return {
+            'sucesso': True,
+            'acao': 'editar_linha',
+            'parametros': {
+                'numero_linha': numero_linha,
+                'valores': valores_convertidos
+            }
+        }
+
+    return None  # Não casou com nenhum padrão simples
+
+
 async def handle_editar_planilha_contexto(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
     """Edita planilha usando contexto (sem precisar enviar arquivo)"""
-    
+
     text_lower = text.lower()
     
     # Verifica se tem planilha no contexto
@@ -1757,11 +2216,16 @@ async def handle_editar_planilha_contexto(update: Update, context: ContextTypes.
         return True
     
     await update.message.reply_text("⏳ Interpretando sua solicitação...")
-    
+
     try:
-        # Interpreta edição com IA
         estrutura = planilha_ctx['estrutura']
-        resultado = await ai.interpretar_edicao_planilha(text, estrutura)
+
+        # OTIMIZAÇÃO #3: Tenta interpretar padrões simples SEM IA
+        resultado = interpretar_edicao_simples(text, estrutura)
+
+        # Se não conseguiu interpretar via regex, usa IA
+        if not resultado:
+            resultado = await ai.interpretar_edicao_planilha(text, estrutura)
         
         if not resultado['sucesso']:
             await update.message.reply_text(
@@ -1820,6 +2284,491 @@ async def handle_editar_planilha_contexto(update: Update, context: ContextTypes.
     except Exception as e:
         logger.error(f"❌ Erro ao editar planilha: {e}")
         await update.message.reply_text(f"❌ Erro ao processar edição: {str(e)}")
+        return True
+
+
+# ============ TEMPLATES DE DOCUMENTOS ============
+
+async def handle_templates(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """Handler para criação de documentos baseados em templates"""
+    
+    text_lower = text.lower()
+    
+    # Detecta pedido de template
+    templates = docx_templates.listar_templates()
+    template_detectado = None
+    
+    for nome, info in templates.items():
+        # Verifica se o nome do template está na mensagem
+        if nome.replace('_', ' ') in text_lower or nome in text_lower:
+            template_detectado = nome
+            break
+        # Verifica palavras-chave
+        if 'contrato' in text_lower and 'entregador' in text_lower:
+            template_detectado = 'contrato_entregador'
+            break
+        if 'relatorio' in text_lower or 'relatório' in text_lower:
+            template_detectado = 'relatorio_semanal'
+            break
+        if 'comprovante' in text_lower and 'pagamento' in text_lower:
+            template_detectado = 'comprovante_pagamento'
+            break
+        if 'recibo' in text_lower:
+            template_detectado = 'recibo_simples'
+            break
+        if 'lista' in text_lower and 'presenca' in text_lower:
+            template_detectado = 'lista_presenca'
+            break
+    
+    if not template_detectado:
+        return False
+    
+    # Verifica se está confirmando template pendente
+    if 'template_pendente' in context.user_data:
+        if any(palavra in text_lower for palavra in PALAVRAS_CONFIRMACAO):
+            # Confirmou - criar documento
+            dados = context.user_data['template_pendente']
+            template_nome = dados['template']
+            variaveis = dados['variaveis']
+            
+            await update.message.reply_text(f"Gerando {template_nome}...")
+            
+            # Renderiza template
+            docx_bytes = docx_templates.renderizar_template(template_nome, variaveis)
+            
+            if docx_bytes:
+                nome_arquivo = f"{template_nome}.docx"
+                await update.message.reply_document(
+                    document=io.BytesIO(docx_bytes),
+                    filename=nome_arquivo,
+                    caption=f"Documento gerado: {template_nome.replace('_', ' ').title()}"
+                )
+                logger.info(f"Template '{template_nome}' gerado com sucesso")
+            else:
+                await update.message.reply_text("Erro ao gerar documento")
+            
+            context.user_data.pop('template_pendente', None)
+            return True
+        
+        elif any(palavra in text_lower for palavra in PALAVRAS_NEGACAO):
+            context.user_data.pop('template_pendente', None)
+            await update.message.reply_text("Documento cancelado.")
+            return True
+    
+    # Novo pedido de template
+    template_info = docx_templates.obter_template(template_detectado)
+    
+    if not template_info:
+        return False
+    
+    # Tenta extrair variáveis da mensagem usando IA
+    await update.message.reply_text("Analisando dados para o documento...")
+    
+    try:
+        # Extrai variáveis com IA
+        variaveis = await ai.extrair_variaveis_template(text, template_detectado, template_info['variaveis'])
+        
+        if not variaveis:
+            # Pede informações faltantes
+            variaveis_faltantes = [v for v in template_info['variaveis'] if v not in variaveis]
+            await update.message.reply_text(
+                f"Para criar o {template_detectado.replace('_', ' ')}, preciso de mais informações:\n\n"
+                f"Variáveis necessárias: {', '.join(variaveis_faltantes)}\n\n"
+                f"Por favor, forneça os dados."
+            )
+            
+            # Salva contexto para próxima mensagem
+            context.user_data['template_pendente'] = {
+                'template': template_detectado,
+                'variaveis': {},
+                'variaveis_faltantes': variaveis_faltantes
+            }
+            return True
+        
+        # Mostra resumo e pede confirmação
+        resumo = f"Vou criar o documento: *{template_detectado.replace('_', ' ').title()}*\n\n"
+        resumo += "Dados:\n"
+        for var, valor in variaveis.items():
+            resumo += f"• {var.replace('_', ' ').title()}: {valor}\n"
+        resumo += "\nConfirma? *(sim/não)*"
+        
+        await update.message.reply_text(resumo, parse_mode=ParseMode.MARKDOWN)
+        
+        # Salva para confirmação
+        context.user_data['template_pendente'] = {
+            'template': template_detectado,
+            'variaveis': variaveis
+        }
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erro ao processar template: {e}")
+        await update.message.reply_text(f"Erro ao processar template: {str(e)}")
+        return True
+
+
+# ============ DOCUMENTOS WORD COM CONTEXTO ============
+
+async def handle_docx_contexto(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """Handler para criacao e edicao de documentos Word com sistema de confirmacao e contexto"""
+    
+    text_lower = text.lower()
+    
+    # ===== DETECTAR CONFIRMACAO DE DOCUMENTO PENDENTE =====
+    if 'docx_pendente' in context.user_data:
+        if any(palavra in text_lower for palavra in PALAVRAS_CONFIRMACAO):
+            # CONFIRMOU - Criar documento
+            await update.message.reply_text("Criando documento...")
+            
+            try:
+                dados_docx = context.user_data['docx_pendente']
+                conteudo = dados_docx['conteudo']
+                titulo = dados_docx['titulo']
+                texto_original = dados_docx.get('texto_original', '')
+                
+                # Cria DOCX
+                docx_bytes = pdf_tools.criar_docx_texto(conteudo, titulo)
+                
+                if not docx_bytes:
+                    await update.message.reply_text("Erro ao criar documento Word")
+                    return True
+                
+                # Nome do arquivo
+                nome_arquivo = titulo.lower().replace(' ', '_')[:30] + '.docx'
+                
+                # Detecta se eh documento pessoal
+                eh_pessoal = is_documento_pessoal(texto_original, titulo)
+                
+                # Prepara caption
+                titulo_safe = html.escape(titulo)
+                caption = (
+                    f"Documento criado com sucesso!\n\n"
+                    f"Salvo no contexto por 2 horas\n"
+                    f"Voce pode editar dizendo: 'adiciona: [texto]' ou 'substitui X por Y'"
+                )
+                
+                if eh_pessoal:
+                    # Documento PESSOAL - envia no topico Pessoal
+                    topico_pessoal = config.TOPICS.get('pessoal', 0)
+                    
+                    if topico_pessoal and topico_pessoal != 0:
+                        await context.bot.send_document(
+                            chat_id=config.GROUP_ID,
+                            message_thread_id=topico_pessoal,
+                            document=io.BytesIO(docx_bytes),
+                            filename=nome_arquivo,
+                            caption=f"{caption}\n\nSalvo no topico: Pessoal",
+                            parse_mode=ParseMode.HTML
+                        )
+                        
+                        await update.message.reply_text(
+                            f"Documento pessoal criado!\n\n"
+                            f"Enviado para o topico Pessoal\n"
+                            f"Arquivo: {html.escape(nome_arquivo)}",
+                            parse_mode=ParseMode.HTML
+                        )
+                        logger.info(f"Documento PESSOAL enviado para topico Pessoal: {nome_arquivo}")
+                    else:
+                        # Fallback: envia no mesmo topico
+                        await update.message.reply_document(
+                            document=io.BytesIO(docx_bytes),
+                            filename=nome_arquivo,
+                            caption=caption,
+                            parse_mode=ParseMode.HTML
+                        )
+                        logger.warning(f"Topico Pessoal nao configurado, enviando no mesmo topico")
+                else:
+                    # Documento NAO-PESSOAL - envia no mesmo topico
+                    await update.message.reply_document(
+                        document=io.BytesIO(docx_bytes),
+                        filename=nome_arquivo,
+                        caption=caption,
+                        parse_mode=ParseMode.HTML
+                    )
+                    logger.info(f"Documento criado e enviado no mesmo topico: {nome_arquivo}")
+                
+                # Salva no contexto para edicoes futuras
+                context.user_data['ultimo_docx'] = {
+                    'nome_arquivo': nome_arquivo,
+                    'titulo': titulo,
+                    'eh_pessoal': eh_pessoal,
+                    'timestamp': datetime.now(),
+                    'bytes': docx_bytes,
+                    'conteudo_original': conteudo,
+                    'versao': 1,
+                    'historico_edicoes': [{'acao': 'criacao', 'timestamp': datetime.now()}]
+                }
+                
+                logger.info(f"Documento Word salvo no contexto: {nome_arquivo} (pessoal={eh_pessoal})")
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"Erro ao criar documento Word: {e}")
+                await update.message.reply_text(f"Erro ao criar documento: {str(e)}")
+                return True
+            finally:
+                context.user_data.pop('docx_pendente', None)
+        
+        elif any(palavra in text_lower for palavra in PALAVRAS_NEGACAO):
+            # NEGOU - Cancelar
+            await update.message.reply_text("Documento cancelado.")
+            context.user_data.pop('docx_pendente', None)
+            return True
+    
+    # ===== DETECTAR PEDIDO DE NOVO DOCUMENTO WORD =====
+    match = re.search(r'(?:cria|criar|gera|gerar)\s+(?:um\s+)?(?:word|docx|documento)\s+com[:\s]+(.+)', text, re.IGNORECASE | re.DOTALL)
+    
+    if match:
+        conteudo = match.group(1).strip()
+        
+        linhas = conteudo.split('\n')
+        titulo = linhas[0][:50] if linhas else "Documento"
+        
+        # Conta paragrafos e palavras para o resumo
+        num_paragrafos = len([l for l in linhas if l.strip()])
+        num_palavras = len(conteudo.split())
+        
+        # Mostra resumo e pede confirmacao
+        resumo = (
+            f"Entendi! Vou criar o documento:\n\n"
+            f"*{titulo}*\n\n"
+            f"Resumo:\n"
+            f"  {num_paragrafos} paragrafo(s)\n"
+            f"  {num_palavras} palavra(s)\n\n"
+            f"Esta correto? *(responda 'sim' para confirmar ou 'nao' para cancelar)*"
+        )
+        
+        await update.message.reply_text(resumo.replace(',', 'X').replace('.', ',').replace('X', '.'), parse_mode=ParseMode.MARKDOWN)
+        
+        # Salva dados pendentes para confirmacao
+        context.user_data['docx_pendente'] = {
+            'conteudo': conteudo,
+            'titulo': titulo,
+            'texto_original': text
+        }
+        
+        return True
+    
+    # ===== EDICAO DE DOCUMENTO NO CONTEXTO =====
+    if 'ultimo_docx' in context.user_data:
+        # Verifica se documento nao expirou (2 horas)
+        docx_ctx = context.user_data['ultimo_docx']
+        tempo_decorrido = datetime.now() - docx_ctx['timestamp']
+        
+        if tempo_decorrido.total_seconds() > 7200:  # 2 horas
+            # Expirou - remove do contexto
+            context.user_data.pop('ultimo_docx', None)
+            return False
+        
+        # Detecta comandos de edicao
+        tem_adicionar = any(palavra in text_lower for palavra in PALAVRAS_ADICIONAR)
+        tem_substituir = 'substitui' in text_lower or 'substituir' in text_lower
+        tem_remover = any(palavra in text_lower for palavra in PALAVRAS_REMOVER)
+        
+        if tem_adicionar or tem_substituir or tem_remover:
+            await update.message.reply_text("Editando documento...")
+            
+            try:
+                docx_bytes = docx_ctx['bytes']
+                
+                if tem_adicionar:
+                    # Extrai texto a adicionar e detecta posição
+                    # CORREÇÃO #6: Suporta "adiciona no inicio:" e "adiciona no fim:"
+                    match = re.search(r'adiciona\s+(?:no\s+)?(inicio|fim)?[:\s]+(.+)', text, re.IGNORECASE | re.DOTALL)
+                    if match:
+                        posicao = match.group(1) or 'fim'
+                        texto_novo = match.group(2).strip()
+                        # Normaliza posição
+                        if posicao == 'inicio':
+                            posicao = 'inicio'
+                        else:
+                            posicao = 'fim'
+                        resultado = pdf_tools.editar_docx_adicionar_texto(docx_bytes, texto_novo, posicao)
+                        
+                        if resultado:
+                            docx_ctx['bytes'] = resultado
+                            docx_ctx['versao'] = docx_ctx.get('versao', 1) + 1
+                            docx_ctx['timestamp'] = datetime.now()
+                            docx_ctx['historico_edicoes'].append({'acao': 'adicionar', 'timestamp': datetime.now()})
+                            
+                            await update.message.reply_document(
+                                document=io.BytesIO(resultado),
+                                filename=docx_ctx['nome_arquivo'],
+                                caption=f"Documento atualizado (v{docx_ctx['versao']})\n\nTexto adicionado com sucesso!",
+                                parse_mode=ParseMode.HTML
+                            )
+                            return True
+                
+                elif tem_substituir:
+                    # Extrai texto antigo e novo
+                    match = re.search(r'(?:substitui|substituir)\s+(.+?)\s+por\s+(.+)', text, re.IGNORECASE)
+                    if match:
+                        texto_antigo = match.group(1).strip()
+                        texto_novo = match.group(2).strip()
+                        resultado = pdf_tools.editar_docx_substituir(docx_bytes, texto_antigo, texto_novo)
+                        
+                        if resultado:
+                            docx_bytes_novo, num_subs = resultado
+                            docx_ctx['bytes'] = docx_bytes_novo
+                            docx_ctx['versao'] = docx_ctx.get('versao', 1) + 1
+                            docx_ctx['timestamp'] = datetime.now()
+                            docx_ctx['historico_edicoes'].append({'acao': 'substituir', 'timestamp': datetime.now()})
+                            
+                            await update.message.reply_document(
+                                document=io.BytesIO(docx_bytes_novo),
+                                filename=docx_ctx['nome_arquivo'],
+                                caption=f"Documento atualizado (v{docx_ctx['versao']})\n\n{num_subs} substituicao(oes) realizada(s)!",
+                                parse_mode=ParseMode.HTML
+                            )
+                            return True
+                
+                elif tem_remover:
+                    # Extrai texto a buscar para remover
+                    match = re.search(r'(?:remove|remover|apaga|apagar)[:\s]+(.+)', text, re.IGNORECASE)
+                    if match:
+                        texto_busca = match.group(1).strip()
+                        resultado = pdf_tools.editar_docx_remover_paragrafo(docx_bytes, texto_busca)
+                        
+                        if resultado:
+                            docx_bytes_novo, num_removidos = resultado
+                            docx_ctx['bytes'] = docx_bytes_novo
+                            docx_ctx['versao'] = docx_ctx.get('versao', 1) + 1
+                            docx_ctx['timestamp'] = datetime.now()
+                            docx_ctx['historico_edicoes'].append({'acao': 'remover', 'timestamp': datetime.now()})
+                            
+                            await update.message.reply_document(
+                                document=io.BytesIO(docx_bytes_novo),
+                                filename=docx_ctx['nome_arquivo'],
+                                caption=f"Documento atualizado (v{docx_ctx['versao']})\n\n{num_removidos} paragrafo(s) removido(s)!",
+                                parse_mode=ParseMode.HTML
+                            )
+                            return True
+                
+                await update.message.reply_text("Nao consegui entender o comando de edicao. Tente:\n- 'adiciona: [texto]'\n- 'substitui X por Y'\n- 'remove: [texto]'")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Erro ao editar documento: {e}")
+                await update.message.reply_text(f"Erro ao editar documento: {str(e)}")
+                return True
+    
+    return False
+
+
+# ============ TEMPLATES PDF COM CONFIRMAÇÃO ============
+
+async def handle_pdf_templates(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """Handler para criação de PDFs baseados em templates com confirmação"""
+    
+    text_lower = text.lower()
+    
+    # Detecta pedido de template PDF
+    templates = pdf_templates.listar_templates_pdf()
+    template_detectado = None
+    
+    # Palavras-chave para detectar templates
+    if 'relatorio' in text_lower and 'entreg' in text_lower:
+        template_detectado = 'relatorio_entregas'
+    elif 'recibo' in text_lower and 'pagamento' in text_lower:
+        template_detectado = 'recibo_pagamento'
+    elif 'recibo' in text_lower:
+        template_detectado = 'recibo_pagamento'
+    elif 'comprovante' in text_lower and 'entreg' in text_lower:
+        template_detectado = 'comprovante_entrega'
+    elif 'relatorio' in text_lower and 'semanal' in text_lower:
+        template_detectado = 'relatorio_semanal'
+    elif 'contrato' in text_lower and 'simples' in text_lower:
+        template_detectado = 'contrato_simples'
+    elif 'contrato' in text_lower:
+        template_detectado = 'contrato_simples'
+    
+    # Verifica se está confirmando template PDF pendente
+    if 'pdf_template_pendente' in context.user_data:
+        if any(palavra in text_lower for palavra in PALAVRAS_CONFIRMACAO):
+            # Confirmou - criar documento
+            dados = context.user_data['pdf_template_pendente']
+            template_nome = dados['template']
+            variaveis = dados['variaveis']
+            
+            await update.message.reply_text(f"Gerando {template_nome}...")
+            
+            # Renderiza template PDF
+            pdf_bytes = pdf_templates.renderizar_template_pdf(template_nome, variaveis)
+            
+            if pdf_bytes:
+                nome_arquivo = f"{template_nome}.pdf"
+                await update.message.reply_document(
+                    document=io.BytesIO(pdf_bytes),
+                    filename=nome_arquivo,
+                    caption=f"📄 PDF gerado: {template_nome.replace('_', ' ').title()}"
+                )
+                logger.info(f"Template PDF '{template_nome}' gerado com sucesso")
+            else:
+                await update.message.reply_text("❌ Erro ao gerar PDF")
+            
+            context.user_data.pop('pdf_template_pendente', None)
+            return True
+        
+        elif any(palavra in text_lower for palavra in PALAVRAS_NEGACAO):
+            context.user_data.pop('pdf_template_pendente', None)
+            await update.message.reply_text("Documento cancelado.")
+            return True
+    
+    if not template_detectado:
+        return False
+    
+    # Novo pedido de template PDF
+    template_info = pdf_templates.obter_template_pdf(template_detectado)
+    
+    if not template_info:
+        return False
+    
+    # Tenta extrair variáveis da mensagem usando IA
+    await update.message.reply_text("Analisando dados para o documento...")
+    
+    try:
+        # Extrai variáveis com IA
+        variaveis = await ai.extrair_variaveis_template(text, template_detectado, template_info['variaveis'])
+        
+        if not variaveis:
+            # Pede informações faltantes
+            variaveis_faltantes = [v for v in template_info['variaveis'] if v not in variaveis]
+            await update.message.reply_text(
+                f"Para criar o {template_detectado.replace('_', ' ')}, preciso de mais informações:\n\n"
+                f"Variáveis necessárias: {', '.join(variaveis_faltantes)}\n\n"
+                f"Por favor, forneça os dados."
+            )
+            
+            # Salva contexto para próxima mensagem
+            context.user_data['pdf_template_pendente'] = {
+                'template': template_detectado,
+                'variaveis': {},
+                'variaveis_faltantes': variaveis_faltantes
+            }
+            return True
+        
+        # Mostra resumo e pede confirmação
+        resumo = f"Vou criar o documento PDF: *{template_detectado.replace('_', ' ').title()}*\n\n"
+        resumo += "Dados:\n"
+        for var, valor in variaveis.items():
+            resumo += f"• {var.replace('_', ' ').title()}: {valor}\n"
+        resumo += "\nConfirma? *(sim/não)*"
+        
+        await update.message.reply_text(resumo, parse_mode=ParseMode.MARKDOWN)
+        
+        # Salva para confirmação
+        context.user_data['pdf_template_pendente'] = {
+            'template': template_detectado,
+            'variaveis': variaveis
+        }
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erro ao processar template PDF: {e}")
+        await update.message.reply_text(f"Erro ao processar template: {str(e)}")
         return True
 
 

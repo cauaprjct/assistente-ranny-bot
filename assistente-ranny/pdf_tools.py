@@ -13,6 +13,7 @@ Funcionalidades:
 
 import io
 import logging
+import re
 from datetime import datetime
 from typing import List, Optional, Tuple
 from pathlib import Path
@@ -42,12 +43,26 @@ except ImportError:
 
 # Importa bibliotecas do Office
 try:
-    from docx import Document
-    from docx.shared import Inches, Pt, Cm
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.enum.style import WD_STYLE_TYPE
-    HAS_DOCX = True
+    # Tenta importar skelmis (fork melhorado com imagens flutuantes)
+    try:
+        from skelmis.docx import Document
+        from skelmis.docx.shared import Inches, Pt, Cm
+        from skelmis.docx.enum.text import WD_ALIGN_PARAGRAPH
+        from skelmis.docx.enum.style import WD_STYLE_TYPE
+        HAS_SKELMIS_DOCX = True
+        HAS_DOCX = True
+        logger.info("Usando skelmis-python-docx (fork melhorado)")
+    except ImportError:
+        # Fallback para python-docx original
+        from docx import Document
+        from docx.shared import Inches, Pt, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.style import WD_STYLE_TYPE
+        HAS_SKELMIS_DOCX = False
+        HAS_DOCX = True
+        logger.info("Usando python-docx original")
 except ImportError:
+    HAS_SKELMIS_DOCX = False
     HAS_DOCX = False
     logger.warning("python-docx não instalado - criação de DOCX desabilitada")
 
@@ -693,8 +708,14 @@ def criar_docx_texto(texto: str, titulo: str = None) -> Optional[bytes]:
         for p in paragrafos:
             p = p.strip()
             if p:
-                # Verifica se é um item de lista (começa com • ou -)
-                if p.startswith('•') or p.startswith('-'):
+                # Verifica se é um item de lista numerada (1. ou 1) ou com símbolos (• ou -)
+                # CORREÇÃO #1: Adiciona suporte a listas numeradas
+                if re.match(r'^\d+[.\)]\s', p):
+                    # Lista numerada (1. ou 1) )
+                    item_texto = re.sub(r'^\d+[.\)]\s', '', p).strip()
+                    doc.add_paragraph(item_texto, style='List Number')
+                elif p.startswith('•') or p.startswith('-'):
+                    # Lista com símbolos (• ou -)
                     item_texto = p.lstrip('•-').strip()
                     doc.add_paragraph(item_texto, style='List Bullet')
                 else:
@@ -1012,20 +1033,20 @@ def criar_xlsx_lista(itens: list, titulo: str = None, cabecalho: str = "Item") -
 
 def ler_docx(docx_bytes: bytes) -> Optional[dict]:
     """Lê um documento Word e retorna seu conteúdo estruturado
-    
+
     Args:
         docx_bytes: bytes do arquivo DOCX
-    
+
     Returns:
-        dict com 'texto', 'paragrafos', 'tabelas' ou None se falhar
+        dict com 'texto', 'paragrafos', 'tabelas', 'headers', 'footers' ou None se falhar
     """
     if not HAS_DOCX:
         logger.error("python-docx não instalado")
         return None
-    
+
     try:
         doc = Document(io.BytesIO(docx_bytes))
-        
+
         # Extrai parágrafos
         paragrafos = []
         texto_completo = []
@@ -1036,7 +1057,7 @@ def ler_docx(docx_bytes: bytes) -> Optional[dict]:
                     'estilo': para.style.name if para.style else 'Normal'
                 })
                 texto_completo.append(para.text)
-        
+
         # Extrai tabelas
         tabelas = []
         for table in doc.tables:
@@ -1045,15 +1066,41 @@ def ler_docx(docx_bytes: bytes) -> Optional[dict]:
                 linha = [cell.text for cell in row.cells]
                 dados_tabela.append(linha)
             tabelas.append(dados_tabela)
-        
+
+        # CORREÇÃO #4: Extrai headers e footers
+        headers = []
+        footers = []
+
+        # Itera sobre as seções do documento
+        for section in doc.sections:
+            # Headers
+            header = section.header
+            if header.is_linked_to_previous == False:
+                # Header próprio da seção
+                for para in header.paragraphs:
+                    if para.text.strip():
+                        headers.append(para.text)
+
+            # Footers
+            footer = section.footer
+            if footer.is_linked_to_previous == False:
+                # Footer próprio da seção
+                for para in footer.paragraphs:
+                    if para.text.strip():
+                        footers.append(para.text)
+
         return {
             'texto': '\n'.join(texto_completo),
             'paragrafos': paragrafos,
             'tabelas': tabelas,
             'num_paragrafos': len(paragrafos),
-            'num_tabelas': len(tabelas)
+            'num_tabelas': len(tabelas),
+            'headers': headers,  # CORREÇÃO #4
+            'footers': footers,  # CORREÇÃO #4
+            'num_headers': len(headers),
+            'num_footers': len(footers)
         }
-        
+
     except Exception as e:
         logger.error(f"Erro ao ler DOCX: {e}")
         return None
@@ -1147,50 +1194,83 @@ def editar_docx_adicionar_texto(docx_bytes: bytes, texto: str, posicao: str = 'f
 
 
 def editar_docx_substituir(docx_bytes: bytes, texto_antigo: str, texto_novo: str) -> Optional[Tuple[bytes, int]]:
-    """Substitui texto em um documento Word
-    
+    """Substitui texto em um documento Word (case-insensitive)
+
     Args:
         docx_bytes: bytes do arquivo DOCX original
         texto_antigo: texto a ser substituído
         texto_novo: novo texto
-    
+
     Returns:
         Tuple (bytes do DOCX modificado, número de substituições) ou None se falhar
     """
     if not HAS_DOCX:
         logger.error("python-docx não instalado")
         return None
-    
+
     try:
         doc = Document(io.BytesIO(docx_bytes))
         substituicoes = 0
-        
+
+        # CORREÇÃO #2: Usa padrão case-insensitive
+        # CORREÇÃO #3: Lida melhor com runs divididos
+        texto_antigo_lower = texto_antigo.lower()
+
         # Substitui em parágrafos
         for para in doc.paragraphs:
-            if texto_antigo in para.text:
-                # Conta substituições
-                substituicoes += para.text.count(texto_antigo)
-                # Faz a substituição mantendo a formatação básica
-                for run in para.runs:
-                    if texto_antigo in run.text:
-                        run.text = run.text.replace(texto_antigo, texto_novo)
-        
+            texto_para = para.text
+            if texto_antigo_lower in texto_para.lower():
+                # Conta quantas substituições serão feitas
+                count = texto_para.lower().count(texto_antigo_lower)
+                substituicoes += count
+
+                # Se há múltiplos runs e texto está dividido, reconstruí o parágrafo
+                if len(para.runs) > 1:
+                    # Verifica se o texto está todo junto ou dividido
+                    texto_total = texto_para.lower()
+                    if texto_antigo_lower in texto_total:
+                        # Texto está dividido em runs - usa approach de reconstruir
+                        # Primeiro, tenta substituição simples em cada run
+                        novo_texto = re.sub(re.escape(texto_antigo), texto_novo, texto_para, flags=re.IGNORECASE)
+                        # Limpa todos os runs e recria com o texto novo
+                        for run in para.runs:
+                            run.text = ''
+                        if para.runs:
+                            para.runs[0].text = novo_texto
+                else:
+                    # Runs únicos - substituição direta
+                    for run in para.runs:
+                        if texto_antigo_lower in run.text.lower():
+                            # Preserva a formatação do primeiro character do run
+                            run.text = re.sub(re.escape(texto_antigo), texto_novo, run.text, flags=re.IGNORECASE)
+
         # Substitui em tabelas
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
-                    if texto_antigo in cell.text:
-                        substituicoes += cell.text.count(texto_antigo)
+                    texto_cell = cell.text
+                    if texto_antigo_lower in texto_cell.lower():
+                        count = texto_cell.lower().count(texto_antigo_lower)
+                        substituicoes += count
+
                         for para in cell.paragraphs:
-                            for run in para.runs:
-                                if texto_antigo in run.text:
-                                    run.text = run.text.replace(texto_antigo, texto_novo)
-        
+                            if texto_antigo_lower in para.text.lower():
+                                if len(para.runs) > 1:
+                                    novo_texto = re.sub(re.escape(texto_antigo), texto_novo, para.text, flags=re.IGNORECASE)
+                                    for run in para.runs:
+                                        run.text = ''
+                                    if para.runs:
+                                        para.runs[0].text = novo_texto
+                                else:
+                                    for run in para.runs:
+                                        if texto_antigo_lower in run.text.lower():
+                                            run.text = re.sub(re.escape(texto_antigo), texto_novo, run.text, flags=re.IGNORECASE)
+
         # Salva em bytes
         output = io.BytesIO()
         doc.save(output)
         return output.getvalue(), substituicoes
-        
+
     except Exception as e:
         logger.error(f"Erro ao editar DOCX (substituir): {e}")
         return None
@@ -1229,6 +1309,36 @@ def editar_docx_remover_paragrafo(docx_bytes: bytes, texto_busca: str) -> Option
         
     except Exception as e:
         logger.error(f"Erro ao editar DOCX (remover): {e}")
+        return None
+
+
+def duplicar_docx(docx_bytes: bytes, novo_nome: str = None) -> Optional[bytes]:
+    """Duplica um documento DOCX com novo nome
+
+    Args:
+        docx_bytes: bytes do arquivo DOCX original
+        novo_nome: novo nome para o documento (opcional, apenas para logging)
+
+    Returns:
+        bytes do DOCX duplicado ou None se falhar
+    """
+    if not HAS_DOCX:
+        logger.error("python-docx não instalado")
+        return None
+
+    try:
+        # Apenas abre e salva novamente (docx é imutável como zip)
+        doc = Document(io.BytesIO(docx_bytes))
+
+        # Salva em bytes
+        output = io.BytesIO()
+        doc.save(output)
+
+        logger.info(f"DOCX duplicado: {novo_nome or 'sem nome'}")
+        return output.getvalue()
+
+    except Exception as e:
+        logger.error(f"Erro ao duplicar DOCX: {e}")
         return None
 
 
@@ -1595,10 +1705,39 @@ def criar_xlsx_entregadores(dados: dict, custo_semana: float = 1.0, custo_fds: f
         
         for idx, dia_info in enumerate(dias_data):
             dia = dia_info.get('dia', '').lower()
-            entregadores = dia_info.get('entregadores', 0)
-            chegaram_horario = dia_info.get('chegaram_horario', 0)
-            entregas = dia_info.get('entregas', 0)
-            
+            entregadores_raw = dia_info.get('entregadores', 0)
+            chegaram_horario_raw = dia_info.get('chegaram_horario', 0)
+            entregas_raw = dia_info.get('entregas', 0)
+
+            # CORREÇÃO #1: Normaliza entregadores para int (pode vir como lista ou string)
+            if isinstance(entregadores_raw, list):
+                entregadores = len(entregadores_raw)
+            elif isinstance(entregadores_raw, str):
+                try:
+                    entregadores = int(entregadores_raw)
+                except ValueError:
+                    entregadores = 0
+            else:
+                entregadores = int(entregadores_raw or 0)
+
+            # CORREÇÃO #1: Normaliza chegaram_horario para int
+            if isinstance(chegaram_horario_raw, str):
+                try:
+                    chegaram_horario = int(chegaram_horario_raw)
+                except ValueError:
+                    chegaram_horario = 0
+            else:
+                chegaram_horario = int(chegaram_horario_raw or 0)
+
+            # CORREÇÃO #1: Normaliza entregas para int
+            if isinstance(entregas_raw, str):
+                try:
+                    entregas = int(entregas_raw)
+                except ValueError:
+                    entregas = 0
+            else:
+                entregas = int(entregas_raw or 0)
+
             # Determina se é fim de semana
             is_fds = is_fim_de_semana(dia)
             
@@ -1624,7 +1763,9 @@ def criar_xlsx_entregadores(dados: dict, custo_semana: float = 1.0, custo_fds: f
                 cell.fill = alt_fill
             
             # Coluna C: Chegaram 18:10
-            cell = ws.cell(row=row_num, column=3, value=chegaram_horario if is_fds else '-')
+            # CORREÇÃO #3: Mostra valor mesmo em dias úteis (documenta para referência)
+            # O valor entra no cálculo apenas em FDS
+            cell = ws.cell(row=row_num, column=3, value=chegaram_horario if is_fds else ('-' if chegaram_horario == 0 else chegaram_horario))
             cell.alignment = data_align
             cell.border = thin_border
             if is_fds:
@@ -1866,20 +2007,19 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
         from datetime import datetime
         
         # Lista padrão de entregadores fixos
+        # CORREÇÃO #5: Agora usa config.ENTREGADORES_FIXOS se não especificado
         if entregadores_fixos is None:
-            entregadores_fixos = [
-                "Maycon",
-                "Gustavo Campos",
-                "Jonathan Maruche",
-                "Marcos Rodrigues",
-                "Lucas da Silveira",
-                "Robert",
-                "Thiago",
-                "Lucas Vitório",
-                "Igor Sousa",
-                "Igor Paiva"
-            ]
-        
+            try:
+                from config import ENTREGADORES_FIXOS
+                entregadores_fixos = ENTREGADORES_FIXOS
+            except ImportError:
+                logger.warning("config.ENTREGADORES_FIXOS não encontrado, usando padrão")
+                entregadores_fixos = [
+                    "Maycon", "Gustavo Campos", "Gustavo Henrique", "Leonardo",
+                    "Sidnei", "Maurício", "Iago", "João Pedro", "José", "Davi",
+                    "Ryan", "Kaique", "Brayan"
+                ]
+
         # Extrai todos os nomes mencionados nos dias
         todos_nomes = set()
         entregas_por_dia_pessoa = {}  # {dia: {nome: num_entregas}}
@@ -2150,20 +2290,24 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             cell.border = thin_border
             col_num += 1
         
-        # Colunas finais: somas
-        for _ in range(4):  # TOTAL, ENTREGAS, VALOR, A PAGAR
+        # Colunas finais: somas (TOTAL, ENTREGAS, VALOR, A PAGAR)
+        # CORREÇÃO #2: Aplicar formato moeda correto em cada coluna
+        for i in range(4):  # TOTAL, ENTREGAS, VALOR, A PAGAR
             col_letter = get_column_letter(col_num)
             formula = f"=SUM({col_letter}3:{col_letter}{total_row-1})"
             cell = ws.cell(row=total_row, column=col_num, value=formula)
-            
-            # Formato moeda para VALOR e R$ MOTO
-            if col_num >= len(dias_ordenados) + 4:
+
+            # CORREÇÃO #2: Formato moeda para VALOR e A PAGAR (índices 2 e 3)
+            if i >= 2:  # VALOR e A PAGAR são valores monetários
                 cell.number_format = 'R$ #,##0.00'
-            
+                cell.alignment = currency_align
+            else:
+                cell.number_format = '#,##0'
+                cell.alignment = data_align
+
             cell.font = total_font
             cell.fill = total_fill
-            cell.alignment = data_align
-            cell.border = thin_border
+            cell.border = thick_border
             col_num += 1
         
         ws.row_dimensions[total_row].height = 20
@@ -2184,14 +2328,51 @@ def criar_xlsx_entregadores_com_nomes(dados: dict, entregadores_fixos: list = No
             chart1.title = "🏆 Top 10 Entregadores"
             chart1.y_axis.title = 'Entregador'
             chart1.x_axis.title = 'Entregas'
-            
-            # Pega os 10 primeiros entregadores (ou menos se houver menos)
-            num_entregadores_grafico = min(10, len(lista_entregadores))
-            
-            # Dados: Nomes (A3:A{3+num_entregadores_grafico-1}) e Total de Entregas (coluna TOTAL)
-            col_total = len(dias_ordenados) + 2  # NOMES + dias + TOTAL
-            data1 = Reference(ws, min_col=col_total, min_row=2, max_row=2+num_entregadores_grafico)
-            cats1 = Reference(ws, min_col=1, min_row=3, max_row=2+num_entregadores_grafico)
+
+            # CORREÇÃO #8: Ordena entregadores por total de entregas (para gráfico Top 10)
+            # Calcula totais de cada entregador
+            totais_entregadores = []
+            primeira_col_dia = 2
+            ultima_col_dia = 1 + len(dias_ordenados)
+            col_total_idx = 1 + len(dias_ordenados) + 1  # Coluna do TOTAL
+
+            for idx, nome in enumerate(lista_entregadores):
+                row = 3 + idx
+                # Soma das entregas do entregador
+                total = 0
+                for col in range(primeira_col_dia, ultima_col_dia + 1):
+                    cell_val = ws.cell(row=row, column=col).value
+                    if cell_val and isinstance(cell_val, (int, float)):
+                        total += cell_val
+                totais_entregadores.append((nome, total, row))
+
+            # Ordena por total (maior para menor)
+            totais_entregadores.sort(key=lambda x: x[1], reverse=True)
+
+            # Pega os top N para o gráfico
+            num_entregadores_grafico = min(10, len(totais_entregadores))
+            top_entregadores = totais_entregadores[:num_entregadores_grafico]
+
+            # Prepara referências ordenadas para o gráfico
+            #.openpyxl precisa de listas separadas de nomes e valores
+            nomes_ordenados = [item[0] for item in top_entregadores]
+            valores_ordenados = [item[1] for item in top_entregadores]
+            linhas_ordenadas = [item[2] for item in top_entregadores]
+
+            # Cria área temporária para o gráfico ordenado (colunas auxiliares após gráficos)
+            col_temp = col_grafico_inicio + 15  # Área bem à direita
+            ws.cell(row=2, column=col_temp, value="Ranking")
+            ws.cell(row=2, column=col_temp + 1, value="Entregas")
+
+            for i, (nome, total, _) in enumerate(top_entregadores):
+                ws.cell(row=3 + i, column=col_temp, value=nome)
+                ws.cell(row=3 + i, column=col_temp + 1, value=total)
+
+            # Dados: Nomes e Total de Entregas (usando área temporária ordenada)
+            col_temp_letter = get_column_letter(col_temp)
+            col_temp_val = get_column_letter(col_temp + 1)
+            data1 = Reference(ws, min_col=col_temp_val, min_row=2, max_row=2 + num_entregadores_grafico)
+            cats1 = Reference(ws, min_col=col_temp_letter, min_row=3, max_row=2 + num_entregadores_grafico)
             chart1.add_data(data1, titles_from_data=True)
             chart1.set_categories(cats1)
             
@@ -2776,3 +2957,421 @@ def aplicar_edicao_planilha(xlsx_bytes: bytes, acao: str, parametros: dict, estr
         import traceback
         logger.error(traceback.format_exc())
         return None
+
+
+# ============ FUNÇÕES AVANÇADAS DE DOCX (FASE 1) ============
+
+def ler_docx_headers_footers(docx_bytes: bytes) -> Optional[dict]:
+    """Lê headers e footers de um documento Word
+    
+    Args:
+        docx_bytes: bytes do arquivo DOCX
+    
+    Returns:
+        dict com headers e footers ou None se falhar
+    """
+    if not HAS_DOCX:
+        logger.error("python-docx não instalado")
+        return None
+    
+    try:
+        doc = Document(io.BytesIO(docx_bytes))
+        
+        resultado = {
+            'headers': [],
+            'footers': [],
+            'num_secoes': len(doc.sections)
+        }
+        
+        for i, section in enumerate(doc.sections):
+            # Header
+            header = section.header
+            if header and not header.is_linked_to_previous:
+                header_text = '\n'.join([p.text for p in header.paragraphs if p.text.strip()])
+                if header_text:
+                    resultado['headers'].append({
+                        'secao': i,
+                        'texto': header_text
+                    })
+            
+            # Footer
+            footer = section.footer
+            if footer and not footer.is_linked_to_previous:
+                footer_text = '\n'.join([p.text for p in footer.paragraphs if p.text.strip()])
+                if footer_text:
+                    resultado['footers'].append({
+                        'secao': i,
+                        'texto': footer_text
+                    })
+        
+        logger.info(f"Headers/Footers lidos: {len(resultado['headers'])} headers, {len(resultado['footers'])} footers")
+        return resultado
+        
+    except Exception as e:
+        logger.error(f"Erro ao ler headers/footers: {e}")
+        return None
+
+
+def editar_docx_header(docx_bytes: bytes, novo_texto: str, secao_idx: int = 0) -> Optional[bytes]:
+    """Edita o header de uma seção do documento
+    
+    Args:
+        docx_bytes: bytes do arquivo DOCX original
+        novo_texto: novo texto para o header
+        secao_idx: índice da seção (padrão: 0 = primeira)
+    
+    Returns:
+        bytes do DOCX modificado ou None se falhar
+    """
+    if not HAS_DOCX:
+        logger.error("python-docx não instalado")
+        return None
+    
+    try:
+        doc = Document(io.BytesIO(docx_bytes))
+        
+        if secao_idx >= len(doc.sections):
+            logger.error(f"Seção {secao_idx} não existe (total: {len(doc.sections)})")
+            return None
+        
+        section = doc.sections[secao_idx]
+        header = section.header
+        
+        # Limpa header existente
+        for p in header.paragraphs:
+            p.clear()
+        
+        # Adiciona novo texto
+        if header.paragraphs:
+            header.paragraphs[0].add_run(novo_texto)
+        else:
+            header.add_paragraph(novo_texto)
+        
+        # Salva
+        output = io.BytesIO()
+        doc.save(output)
+        
+        logger.info(f"Header editado na seção {secao_idx}")
+        return output.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Erro ao editar header: {e}")
+        return None
+
+
+def editar_docx_footer(docx_bytes: bytes, novo_texto: str, secao_idx: int = 0) -> Optional[bytes]:
+    """Edita o footer de uma seção do documento
+    
+    Args:
+        docx_bytes: bytes do arquivo DOCX original
+        novo_texto: novo texto para o footer
+        secao_idx: índice da seção (padrão: 0 = primeira)
+    
+    Returns:
+        bytes do DOCX modificado ou None se falhar
+    """
+    if not HAS_DOCX:
+        logger.error("python-docx não instalado")
+        return None
+    
+    try:
+        doc = Document(io.BytesIO(docx_bytes))
+        
+        if secao_idx >= len(doc.sections):
+            logger.error(f"Seção {secao_idx} não existe (total: {len(doc.sections)})")
+            return None
+        
+        section = doc.sections[secao_idx]
+        footer = section.footer
+        
+        # Limpa footer existente
+        for p in footer.paragraphs:
+            p.clear()
+        
+        # Adiciona novo texto
+        if footer.paragraphs:
+            footer.paragraphs[0].add_run(novo_texto)
+        else:
+            footer.add_paragraph(novo_texto)
+        
+        # Salva
+        output = io.BytesIO()
+        doc.save(output)
+        
+        logger.info(f"Footer editado na seção {secao_idx}")
+        return output.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Erro ao editar footer: {e}")
+        return None
+
+
+def contar_imagens_docx(docx_bytes: bytes) -> int:
+    """Conta imagens em um documento Word
+    
+    Args:
+        docx_bytes: bytes do arquivo DOCX
+    
+    Returns:
+        Número de imagens no documento
+    """
+    if not HAS_DOCX:
+        logger.error("python-docx não instalado")
+        return 0
+    
+    try:
+        doc = Document(io.BytesIO(docx_bytes))
+        count = 0
+        
+        # Conta imagens inline nos parágrafos
+        for para in doc.paragraphs:
+            for run in para.runs:
+                if run._element.xpath('.//a:blip'):
+                    count += 1
+        
+        # Conta imagens nas tabelas
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            if run._element.xpath('.//a:blip'):
+                                count += 1
+        
+        logger.info(f"Imagens encontradas: {count}")
+        return count
+        
+    except Exception as e:
+        logger.error(f"Erro ao contar imagens: {e}")
+        return 0
+
+
+def validar_integridade_docx(docx_bytes: bytes, original_bytes: bytes = None) -> dict:
+    """Valida integridade de um documento DOCX
+    
+    Args:
+        docx_bytes: bytes do documento a validar
+        original_bytes: bytes do documento original (opcional, para comparação)
+    
+    Returns:
+        dict com resultado da validação
+    """
+    if not HAS_DOCX:
+        return {'valido': False, 'erro': 'python-docx não instalado'}
+    
+    try:
+        doc = Document(io.BytesIO(docx_bytes))
+        
+        resultado = {
+            'valido': True,
+            'num_paragrafos': len(doc.paragraphs),
+            'num_tabelas': len(doc.tables),
+            'num_secoes': len(doc.sections),
+            'tem_imagens': False,
+            'tem_headers': False,
+            'tem_footers': False,
+            'alertas': []
+        }
+        
+        # Verifica imagens
+        resultado['num_imagens'] = contar_imagens_docx(docx_bytes)
+        resultado['tem_imagens'] = resultado['num_imagens'] > 0
+        
+        # Verifica headers/footers
+        for section in doc.sections:
+            if section.header and not section.header.is_linked_to_previous:
+                resultado['tem_headers'] = True
+            if section.footer and not section.footer.is_linked_to_previous:
+                resultado['tem_footers'] = True
+        
+        # Compara com original se fornecido
+        if original_bytes:
+            doc_orig = Document(io.BytesIO(original_bytes))
+            
+            # Verifica se perdeu parágrafos
+            if len(doc.paragraphs) < len(doc_orig.paragraphs) * 0.8:
+                resultado['alertas'].append(f"Perda significativa de parágrafos: {len(doc_orig.paragraphs)} -> {len(doc.paragraphs)}")
+            
+            # Verifica se perdeu tabelas
+            if len(doc.tables) < len(doc_orig.tables):
+                resultado['alertas'].append(f"Perda de tabelas: {len(doc_orig.tables)} -> {len(doc.tables)}")
+            
+            # Verifica tamanho
+            if len(docx_bytes) < len(original_bytes) * 0.3:
+                resultado['alertas'].append(f"Redução drástica de tamanho: {len(original_bytes)} -> {len(docx_bytes)} bytes")
+        
+        # Verifica se tem alertas críticos
+        if any('Perda' in a for a in resultado['alertas']):
+            resultado['valido'] = False
+        
+        logger.info(f"Validação: {resultado}")
+        return resultado
+        
+    except Exception as e:
+        logger.error(f"Erro ao validar DOCX: {e}")
+        return {'valido': False, 'erro': str(e)}
+
+
+def editar_docx_preservar_imagens(docx_bytes: bytes, texto_antigo: str, texto_novo: str) -> Optional[Tuple[bytes, int]]:
+    """Substitui texto preservando imagens existentes
+    
+    Versão melhorada de editar_docx_substituir que:
+    1. Preserva imagens inline
+    2. Preserva formatação de runs
+    3. Valida integridade após edição
+    
+    Args:
+        docx_bytes: bytes do arquivo DOCX original
+        texto_antigo: texto a ser substituído
+        texto_novo: novo texto
+    
+    Returns:
+        Tuple (bytes do DOCX modificado, número de substituições) ou None se falhar
+    """
+    if not HAS_DOCX:
+        logger.error("python-docx não instalado")
+        return None
+    
+    try:
+        doc = Document(io.BytesIO(docx_bytes))
+        substituicoes = 0
+        
+        # Substitui em parágrafos preservando runs
+        for para in doc.paragraphs:
+            if texto_antigo in para.text:
+                # Conta substituições
+                substituicoes += para.text.count(texto_antigo)
+                
+                # Substitui dentro de cada run (preserva formatação)
+                for run in para.runs:
+                    if texto_antigo in run.text:
+                        run.text = run.text.replace(texto_antigo, texto_novo)
+        
+        # Substitui em tabelas
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if texto_antigo in cell.text:
+                        substituicoes += cell.text.count(texto_antigo)
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                if texto_antigo in run.text:
+                                    run.text = run.text.replace(texto_antigo, texto_novo)
+        
+        # Salva
+        output = io.BytesIO()
+        doc.save(output)
+        result = output.getvalue()
+        
+        # Valida integridade
+        validacao = validar_integridade_docx(result, docx_bytes)
+        if not validacao['valido']:
+            logger.warning(f"Validação falhou: {validacao['alertas']}")
+            # Retorna mesmo assim, mas loga o aviso
+        
+        logger.info(f"Substituição preservando imagens: {substituicoes} ocorrências")
+        return result, substituicoes
+        
+    except Exception as e:
+        logger.error(f"Erro ao substituir preservando imagens: {e}")
+        return None
+
+
+def adicionar_imagem_docx(docx_bytes: bytes, imagem_bytes: bytes, posicao: str = 'fim', 
+                          largura_polegadas: float = 4.0) -> Optional[bytes]:
+    """Adiciona imagem a um documento Word
+    
+    Args:
+        docx_bytes: bytes do arquivo DOCX original
+        imagem_bytes: bytes da imagem (PNG, JPG, etc)
+        posicao: 'inicio' ou 'fim' (padrão: 'fim')
+        largura_polegadas: largura da imagem em polegadas
+    
+    Returns:
+        bytes do DOCX com imagem ou None se falhar
+    """
+    if not HAS_DOCX:
+        logger.error("python-docx não instalado")
+        return None
+    
+    try:
+        doc = Document(io.BytesIO(docx_bytes))
+        
+        # Cria buffer para a imagem
+        img_stream = io.BytesIO(imagem_bytes)
+        
+        if posicao == 'inicio':
+            # Adiciona no início
+            para = doc.paragraphs[0].insert_paragraph_before()
+            run = para.add_run()
+            run.add_picture(img_stream, width=Inches(largura_polegadas))
+        else:
+            # Adiciona no fim
+            para = doc.add_paragraph()
+            run = para.add_run()
+            run.add_picture(img_stream, width=Inches(largura_polegadas))
+        
+        # Salva
+        output = io.BytesIO()
+        doc.save(output)
+        
+        logger.info(f"Imagem adicionada ao documento ({largura_polegadas} polegadas de largura)")
+        return output.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Erro ao adicionar imagem: {e}")
+        return None
+
+
+def adicionar_imagem_flutuante(docx_bytes: bytes, imagem_bytes: bytes, 
+                               pos_x: float, pos_y: float,
+                               largura_polegadas: float = 2.0,
+                               altura_polegadas: float = 2.0) -> Optional[bytes]:
+    """Adiciona imagem flutuante em posição específica (requer skelmis)
+    
+    Args:
+        docx_bytes: bytes do arquivo DOCX original
+        imagem_bytes: bytes da imagem
+        pos_x: posição X em pontos
+        pos_y: posição Y em pontos
+        largura_polegadas: largura em polegadas
+        altura_polegadas: altura em polegadas
+    
+    Returns:
+        bytes do DOCX com imagem flutuante ou None se falhar
+    """
+    if not HAS_SKELMIS_DOCX:
+        logger.warning("Imagens flutuantes requerem skelmis-python-docx")
+        # Fallback: adiciona imagem inline
+        return adicionar_imagem_docx(docx_bytes, imagem_bytes, 'fim', largura_polegadas)
+    
+    try:
+        from skelmis.docx.shared import Pt
+        
+        doc = Document(io.BytesIO(docx_bytes))
+        img_stream = io.BytesIO(imagem_bytes)
+        
+        # Adiciona parágrafo com imagem flutuante
+        para = doc.add_paragraph()
+        run = para.add_run()
+        
+        # Usa add_float_picture do skelmis
+        run.add_float_picture(
+            img_stream,
+            width=Inches(largura_polegadas),
+            height=Inches(altura_polegadas),
+            pos_x=Pt(pos_x),
+            pos_y=Pt(pos_y)
+        )
+        
+        # Salva
+        output = io.BytesIO()
+        doc.save(output)
+        
+        logger.info(f"Imagem flutuante adicionada em ({pos_x}, {pos_y})")
+        return output.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Erro ao adicionar imagem flutuante: {e}")
+        # Fallback para inline
+        return adicionar_imagem_docx(docx_bytes, imagem_bytes, 'fim', largura_polegadas)

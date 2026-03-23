@@ -1,0 +1,59 @@
+═══════════════════════════════════════════════════════════════
+  🚀 MONITOR DE ARQUIVOS PARA TELEGRAM
+═══════════════════════════════════════════════════════════════
+
+INSTALAÇÃO SUPER SIMPLES:
+──────────────────────────────────────────────────────────────
+
+1. Clique com BOTÃO DIREITO em: SUPER_INSTALADOR.bat
+2. Escolha: "Executar como administrador"
+3. Siga as instruções na tela
+4. PRONTO! ✅
+
+
+O QUE ELE FAZ:
+──────────────────────────────────────────────────────────────
+
+✓ Encontra o Python automaticamente
+✓ Instala as bibliotecas necessárias
+✓ Adiciona exceção no Windows Defender (não será bloqueado!)
+✓ Cria atalho para iniciar com o Windows
+✓ Inicia o monitor automaticamente
+
+
+DEPOIS DE INSTALADO:
+──────────────────────────────────────────────────────────────
+
+O monitor vai rodar SEMPRE que ligar o notebook!
+
+Qualquer arquivo Word, Excel ou PDF que você salvar no Desktop
+ou Documentos será enviado automaticamente para o Telegram.
+
+
+COMANDOS ÚTEIS:
+──────────────────────────────────────────────────────────────
+
+• INICIAR.bat  → Ligar o monitor agora
+• PARAR.bat    → Desligar o monitor
+• STATUS.bat   → Ver se está rodando
+
+
+TESTE:
+──────────────────────────────────────────────────────────────
+
+1. Salve um arquivo Word no Desktop
+2. Aguarde até 30 segundos
+3. Veja se apareceu no Telegram (tópico "PC Local")
+
+
+PROBLEMAS?
+──────────────────────────────────────────────────────────────
+
+• Abra o arquivo: monitor_simples.log
+• Veja o que está acontecendo
+• Chame o desenvolvedor se precisar
+
+
+═══════════════════════════════════════════════════════════════
+  ⚡ DICA: Execute SUPER_INSTALADOR.bat como ADMINISTRADOR!
+═══════════════════════════════════════════════════════════════

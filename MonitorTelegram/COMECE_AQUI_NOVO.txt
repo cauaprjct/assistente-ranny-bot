@@ -1,0 +1,44 @@
+═══════════════════════════════════════════════════════════════
+  🚀 COMECE AQUI - INSTALAÇÃO SIMPLES
+═══════════════════════════════════════════════════════════════
+
+
+⚠️  PROBLEMA: "Python não é reconhecido"?
+────────────────────────────────────────────────────────────────
+
+SOLUÇÃO RÁPIDA:
+→ Clique DUAS VEZES em: CORRIGIR_PYTHON.bat
+  (Ele encontra e configura tudo automaticamente!)
+
+
+═══════════════════════════════════════════════════════════════
+  📋 PASSO A PASSO COMPLETO
+═══════════════════════════════════════════════════════════════
+
+1. CONFIGURAR TOKEN
+   - Abra o arquivo ".env" com Bloco de Notas
+   - Substitua "AAH8xYourRealTokenHere" pelo token real
+   - Salve e feche
+
+2. INSTALAR
+   - Clique DUAS VEZES em: CORRIGIR_PYTHON.bat
+   - Aguarde terminar
+
+3. TESTAR
+   - Salve um arquivo Word no Desktop
+   - Veja se aparece no Telegram em 30 segundos
+
+PRONTO! ✅
+
+
+═══════════════════════════════════════════════════════════════
+  🔧 COMANDOS ÚTEIS
+═══════════════════════════════════════════════════════════════
+
+• CORRIGIR_PYTHON.bat          → Instala tudo automaticamente
+• iniciar_monitor_simples.py   → Ligar o monitor
+• parar_monitor_simples.py     → Desligar o monitor
+• status_monitor_simples.py    → Ver se está rodando
+
+
+═══════════════════════════════════════════════════════════════

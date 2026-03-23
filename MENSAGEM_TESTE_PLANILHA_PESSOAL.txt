@@ -1,0 +1,26 @@
+Ranny, preciso que você crie uma planilha Excel completa para controle das minhas finanças pessoais do mês de fevereiro de 2026.
+
+A planilha deve ter as seguintes colunas:
+- Data (formato DD/MM)
+- Categoria (Alimentação, Transporte, Lazer, Saúde, Educação, Moradia, Outros)
+- Descrição (detalhes da despesa)
+- Valor (em reais)
+- Forma de Pagamento (Dinheiro, Débito, Crédito, PIX)
+- Status (Pago ou Pendente)
+
+Inclua esses dados de exemplo:
+
+01/02, Alimentação, Supermercado Extra, 245.80, Débito, Pago
+03/02, Transporte, Uber para trabalho, 28.50, PIX, Pago
+05/02, Lazer, Cinema com amigos, 65.00, Crédito, Pago
+07/02, Saúde, Farmácia - remédios, 89.90, Dinheiro, Pago
+10/02, Educação, Curso online Udemy, 149.90, Crédito, Pago
+12/02, Moradia, Conta de luz, 180.00, Débito, Pendente
+15/02, Alimentação, Restaurante almoço, 45.00, PIX, Pago
+18/02, Transporte, Gasolina posto Shell, 320.00, Débito, Pago
+20/02, Lazer, Streaming Netflix, 55.90, Crédito, Pago
+22/02, Outros, Presente aniversário mãe, 200.00, Crédito, Pendente
+25/02, Alimentação, Padaria café manhã, 18.50, Dinheiro, Pago
+27/02, Saúde, Consulta dentista, 350.00, PIX, Pendente
+
+Quero que a planilha tenha um título chamado "CONTROLE FINANCEIRO PESSOAL - FEVEREIRO 2026" e que fique bem formatada com bordas, cores alternadas nas linhas e alinhamento adequado. Pode fazer isso pra mim?

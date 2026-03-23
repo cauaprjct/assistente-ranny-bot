@@ -111,6 +111,14 @@ OBRIGACOES = {
     25: ['Vale Transporte'],
 }
 
+# CORREÇÃO #5: Lista de entregadores fixos (pode ser editada via variável de ambiente)
+# Formato: nomes separados por vírgula
+ENTREGADORES_FIXOS_STR = os.getenv('ENTREGADORES_FIXOS', 'Maycon,Gustavo Campos,Gustavo Henrique,Leonardo,Sidnei,Maurício,Iago,João Pedro,José,Davi,Ryan,Kaique,Brayan')
+ENTREGADORES_FIXOS = [nome.strip() for nome in ENTREGADORES_FIXOS_STR.split(',') if nome.strip()]
+
+# Valor por entrega (R$) - usado no cálculo de planilhas
+VALOR_POR_ENTREGA = float(os.getenv('VALOR_POR_ENTREGA', '12.00'))
+
 # Dias de antecedência para alertas
 ALERTA_DIAS = [1, 3, 7]
 

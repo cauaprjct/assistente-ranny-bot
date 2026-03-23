@@ -1,0 +1,48 @@
+Ranny, preciso de uma planilha avançada para gerenciar meu negócio de freelancer.
+
+Cria uma planilha de CONTROLE DE PROJETOS FREELANCER - FEVEREIRO 2026
+
+Preciso rastrear:
+
+INFORMAÇÕES DO PROJETO:
+- Código do Projeto (ex: PROJ-001)
+- Nome do Cliente
+- Descrição do Serviço
+- Data de Início
+- Prazo de Entrega
+- Data de Conclusão Real
+- Status (Em Andamento, Concluído, Atrasado, Cancelado)
+
+INFORMAÇÕES FINANCEIRAS:
+- Valor Orçado (quanto cobrei)
+- Horas Estimadas
+- Horas Reais Trabalhadas
+- Valor por Hora (calculado: Valor Orçado / Horas Estimadas)
+- Custo Real (Horas Reais × Valor por Hora)
+- Lucro/Prejuízo (Valor Orçado - Custo Real)
+- Percentual de Lucro (em %)
+- Forma de Pagamento (PIX, Transferência, Boleto)
+- Status Pagamento (Pago, Pendente, Atrasado)
+
+DADOS DOS PROJETOS:
+
+PROJ-001, João Silva, Website Institucional, 01/02/2026, 15/02/2026, 14/02/2026, Concluído, 3500.00, 40, 38, 87.50, 3325.00, 175.00, 5%, PIX, Pago
+
+PROJ-002, Maria Santos, Sistema de Gestão, 03/02/2026, 28/02/2026, N/A, Em Andamento, 8000.00, 100, 65, 80.00, 5200.00, 2800.00, 35%, Transferência, Pendente
+
+PROJ-003, Tech Startup, App Mobile, 05/02/2026, 20/02/2026, 22/02/2026, Atrasado, 12000.00, 150, 168, 80.00, 13440.00, -1440.00, -12%, Boleto, Pendente
+
+PROJ-004, Loja Virtual, E-commerce Completo, 08/02/2026, 25/02/2026, 24/02/2026, Concluído, 6500.00, 80, 75, 81.25, 6093.75, 406.25, 6.25%, PIX, Pago
+
+PROJ-005, Consultoria ABC, Dashboard Analytics, 10/02/2026, 18/02/2026, N/A, Em Andamento, 4500.00, 50, 32, 90.00, 2880.00, 1620.00, 36%, Transferência, Pendente
+
+REQUISITOS ESPECIAIS:
+1. Linha de TOTAL somando: Valor Orçado, Horas Estimadas, Horas Reais, Custo Real, Lucro/Prejuízo
+2. Calcular automaticamente: Valor por Hora, Custo Real, Lucro/Prejuízo, Percentual de Lucro
+3. Destacar em VERMELHO projetos com prejuízo (Lucro/Prejuízo negativo)
+4. Destacar em VERDE projetos com lucro acima de R$ 1000
+5. Mostrar claramente projetos atrasados
+6. Formatar todos os valores monetários com R$
+7. Formatar percentuais com símbolo %
+
+Essa planilha é CRÍTICA para meu negócio, precisa estar perfeita com todas as fórmulas e formatações! Consegue fazer?

@@ -1,0 +1,112 @@
+═══════════════════════════════════════════════════════════════
+  🚀 COMECE AQUI - INSTALAÇÃO EM 3 PASSOS
+═══════════════════════════════════════════════════════════════
+
+
+⚠️  PROBLEMA COM PYTHON? LEIA ISTO PRIMEIRO!
+────────────────────────────────────────────────────────────────
+
+Se você instalou o Python mas o script diz "não é reconhecido",
+é porque você NÃO MARCOU a opção "Add Python to PATH".
+
+SOLUÇÃO RÁPIDA:
+1. Clique DUAS VEZES em: CORRIGIR_PYTHON.bat
+   (Ele vai encontrar e configurar automaticamente)
+
+OU
+
+SOLUÇÃO MANUAL:
+1. Desinstale o Python (Painel de Controle > Programas)
+2. Baixe novamente: https://www.python.org/downloads/
+3. ⚠️  MARQUE "Add Python to PATH" (caixinha embaixo)
+4. Instale novamente
+
+
+═══════════════════════════════════════════════════════════════
+  📋 INSTALAÇÃO NORMAL (se Python já está OK)
+═══════════════════════════════════════════════════════════════
+
+
+ver)
+────────────────────────────────────────────────────────────────
+
+1. Abra o navegador
+2. Acesse: https://www.python.org/downloads/
+3. Clique no botão amarelo "Download Python"
+4. Execute o arquivo baixado
+5. ⚠️  MUITO IMPORTANTE: Marque "Add Python to PATH"
+6. Clique em "Install Now"
+7. Aguarde terminar (2-3 minutos)
+8. Clique em "Close"
+
+
+PASSO 2: CONFIGURAR O TOKEN
+────────────────────────────────────────────────────────────────
+
+1. Clique com botão direito no arquivo ".env"
+oco de Notas"
+3. Na linha do BOT_TOKEN, substitua "AAH8xYourRealTokenHere" pelo token real
+4. Salve (Ctrl+S) e feche
+
+
+PASSO 3: INSTALAR E TESTAR
+────────────────────────────────────────────────────────────────
+
+OPÇÃO A - AUTOMÁTICO (recomendado):
+1. Clique DUAS VEZES em: CORRIGIR_PYTHON.bat
+2. Siga as instruções na tela
+
+OPÇÃO B - MANUAL (se o automático não funcionar):
+1. Clique DUAS VEZES em: INSTALAR_MANUAL.bat
+2. Siga as instruções passo a passo
+
+
+═
+  ✅ PRONTO! AGORA É SÓ USAR
+═══════════════════════════════════════════════════════════════
+
+A partir de agora, sempre que a Ranny salvar um arquivo Word, Excel
+ou PDF no Desktop ou Documentos, ele vai aparecer automaticamente
+no Telegram!
+
+O monitor vai iniciar sozinho sempre que ligar o notebook.
+
+
+═══════════════════════════════════════════════════════════════
+  🔧 COMANDOS ÚTEIS
+uivos!
+R: Verifique se o token no arquivo .env está correto
+
+P: Onde vejo os logs?
+R: Abra o arquivo "monitor_simples.log" com Bloco de Notas
+
+
+═══════════════════════════════════════════════════════════════
+  📞 PRECISA DE AJUDA?
+═══════════════════════════════════════════════════════════════
+
+Chame o desenvolvedor e mostre o arquivo "monitor_simples.log"
+
+
+═══════════════════════════════════════════════════════════════
+_simples.py    → Desligar o monitor
+• status_monitor_simples.py   → Ver se está rodando
+
+
+═══════════════════════════════════════════════════════════════
+  ❓ DÚVIDAS COMUNS
+═══════════════════════════════════════════════════════════════
+
+P: "Python não é reconhecido"
+R: Rode o CORRIGIR_PYTHON.bat OU reinstale marcando "Add to PATH"
+
+P: Como sei se está funcionando?
+R: Clique duas vezes em "status_monitor_simples.py"
+
+P: Como desligar?
+R: Clique duas vezes em "parar_monitor_simples.py"
+
+P: Não está enviando arq═══════════════════════════════════════════════════════════════
+
+• iniciar_monitor_simples.py  → Ligar o monitor
+• parar_monitor

@@ -1,0 +1,17 @@
+Cria uma planilha de controle financeiro pessoal com as colunas: Data, Categoria, Descrição, Valor, Forma de Pagamento, Status
+
+Adiciona esses dados:
+01/02, Alimentação, Supermercado Extra, 245.80, Débito, Pago
+03/02, Transporte, Uber para trabalho, 28.50, PIX, Pago
+05/02, Lazer, Cinema com amigos, 65.00, Crédito, Pago
+07/02, Saúde, Farmácia remédios, 89.90, Dinheiro, Pago
+10/02, Educação, Curso online Udemy, 149.90, Crédito, Pago
+12/02, Moradia, Conta de luz, 180.00, Débito, Pendente
+15/02, Alimentação, Restaurante almoço, 45.00, PIX, Pago
+18/02, Transporte, Gasolina posto Shell, 320.00, Débito, Pago
+20/02, Lazer, Streaming Netflix, 55.90, Crédito, Pago
+22/02, Outros, Presente aniversário, 200.00, Crédito, Pendente
+25/02, Alimentação, Padaria café, 18.50, Dinheiro, Pago
+27/02, Saúde, Consulta dentista, 350.00, PIX, Pendente
+
+Título: CONTROLE FINANCEIRO PESSOAL - FEVEREIRO 2026

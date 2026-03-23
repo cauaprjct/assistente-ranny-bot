@@ -28,6 +28,7 @@ env/
 # Environment Variables
 .env
 .env.local
+.env.monitor
 
 # Database
 *.db
@@ -63,3 +64,22 @@ htmlcov/
 
 # Backup organizado (arquivos grandes)
 BACKUP_ORGANIZADO/
+
+# Sensitive files (API keys, tokens, credentials)
+chaves_gemini_api.txt
+*.json
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.docx
+*.xlsx
+
+# Upload reports and logs
+relatorio_upload_backup.json
+deploy-logs-top.md
+deploy-status-check.md
+render_logs_*.png
+keep_alive_health_check.png
+excel_entregadores_ranny.png
